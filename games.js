@@ -20,5 +20,11 @@ const GAMES = [
     file: "games/pitfall.html",
     description: "Run, jump and swing through the jungle.",
     controls: "Arrows to move, space to jump"
+  },
+  {
+    title: "Block Craft",
+    file: "games/minecraft.html",
+    description: "Mine blocks, build structures, and explore your pixel world.",
+    controls: "A/D to move, W/Space to jump, Left-click to mine, Right-click to place, 1-6 keys for blocks"
   }
 ];

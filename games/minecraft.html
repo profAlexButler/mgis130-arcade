@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Block Craft - The Arcade</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background-color: #12101f;
+      color: #4de8ff;
+      font-family: "Courier New", monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    header {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    a.back-link {
+      color: #ff5fd2;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    a.back-link:hover {
+      text-decoration: underline;
+    }
+    h1 {
+      font-size: 20px;
+      color: #ff5fd2;
+      letter-spacing: 1px;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border: 3px solid #ff5fd2;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 0 15px rgba(255, 95, 210, 0.3);
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(18, 16, 31, 0.92);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+      z-index: 10;
+    }
+    .overlay h2 {
+      font-size: 32px;
+      color: #ff5fd2;
+      margin-bottom: 12px;
+      text-shadow: 0 0 8px rgba(255, 95, 210, 0.6);
+    }
+    .overlay p {
+      color: #4de8ff;
+      font-size: 14px;
+      margin-bottom: 8px;
+      max-width: 520px;
+      line-height: 1.4;
+    }
+    .start-btn {
+      margin-top: 16px;
+      padding: 12px 24px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: bold;
+      background: #ff5fd2;
+      color: #12101f;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #b83da0;
+    }
+    .start-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #b83da0;
+    }
+    .touch-controls {
+      display: none;
+      width: 100%;
+      max-width: 800px;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+    @media (max-width: 768px) {
+      .touch-controls {
+        display: flex;
+      }
+    }
+    .touch-group {
+      display: flex;
+      gap: 8px;
+    }
+    .t-btn {
+      width: 52px;
+      height: 52px;
+      background: rgba(255, 95, 210, 0.2);
+      border: 2px solid #ff5fd2;
+      color: #4de8ff;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+    .t-btn:active {
+      background: rgba(255, 95, 210, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../index.html" class="back-link">&larr; Back to the arcade</a>
+    <h1>BLOCK CRAFT</h1>
+  </header>
+
+  <div id="game-container">
+    <canvas id="canvas" width="800" height="450"></canvas>
+    <div id="start-screen" class="overlay">
+      <h2>BLOCK CRAFT</h2>
+      <p>Explore your pixel world, mine terrain, and craft buildings brick by brick.</p>
+      <p><strong>Move:</strong> A / D or Left/Right Arrows &bull; <strong>Jump:</strong> W / Space</p>
+      <p><strong>Mine Block:</strong> Left-Click &bull; <strong>Place Block:</strong> Right-Click (or Shift-Click)</p>
+      <p><strong>Hotbar:</strong> Keys 1-6 or mouse scroll wheel to select block</p>
+      <button class="start-btn" id="start-btn">PLAY GAME</button>
+    </div>
+  </div>
+
+  <div class="touch-controls">
+    <div class="touch-group">
+      <div class="t-btn" id="btn-left">&larr;</div>
+      <div class="t-btn" id="btn-right">&rarr;</div>
+    </div>
+    <div class="touch-group">
+      <div class="t-btn" id="btn-mode">MINE</div>
+      <div class="t-btn" id="btn-jump">&#8593;</div>
+    </div>
+  </div>
+
+  <script>
+    // Audio Synthesizer (No external sound files required)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+    function playSound(type) {
+      if (!audioCtx) audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+
+      if (type === 'mine') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      } else if (type === 'place') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(450, now + 0.06);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.06);
+        osc.start(now);
+        osc.stop(now + 0.06);
+      } else if (type === 'jump') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+    }
+
+    // World & Block Definitions
+    const TILE_SIZE = 20;
+    const WORLD_COLS = 120;
+    const WORLD_ROWS = 60;
+    
+    const BLOCKS = {
+      0: { name: 'Air', solid: false, color: null },
+      1: { name: 'Grass', solid: true, color: '#5b8c31', topColor: '#7cbd38' },
+      2: { name: 'Dirt', solid: true, color: '#866043' },
+      3: { name: 'Stone', solid: true, color: '#757575' },
+      4: { name: 'Wood', solid: true, color: '#61462b' },
+      5: { name: 'Leaves', solid: true, color: '#37681e' },
+      6: { name: 'Brick', solid: true, color: '#9e4636' },
+      7: { name: 'Bedrock', solid: true, color: '#2b2b2b', unbreakable: true }
+    };
+
+    const HOTBAR_ITEMS = [1, 2, 3, 4, 5, 6];
+    let world = [];
+    let inventory = { 1: 15, 2: 15, 3: 10, 4: 10, 5: 15, 6: 15 };
+    let selectedHotbarIdx = 0;
+    let touchMode = 'mine';
+
+    // Player State
+    const player = {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      width: 14,
+      height: 32,
+      grounded: false,
+      facing: 'right'
+    };
+
+    const keys = {};
+    let mouse = { worldX: 0, worldY: 0, gridX: 0, gridY: 0 };
+    let gameStarted = false;
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startScreen = document.getElementById('start-screen');
+    const startBtn = document.getElementById('start-btn');
+
+    // World Generation Algorithm
+    function generateWorld() {
+      world = new Array(WORLD_ROWS).fill(0).map(() => new Array(WORLD_COLS).fill(0));
+      const surfaceLevel = 24;
+      
+      for (let x = 0; x < WORLD_COLS; x++) {
+        const heightOffset = Math.floor(
+          Math.sin(x * 0.1) * 3 + Math.sin(x * 0.04) * 5
+        );
+        const groundY = surfaceLevel + heightOffset;
+
+        for (let y = 0; y < WORLD_ROWS; y++) {
+          if (y === WORLD_ROWS - 1) {
+            world[y][x] = 7; // Bedrock bottom
+          } else if (y > groundY + 4) {
+            world[y][x] = 3; // Deep stone
+          } else if (y > groundY) {
+            world[y][x] = 2; // Dirt
+          } else if (y === groundY) {
+            world[y][x] = 1; // Top grass
+          }
+        }
+
+        // Procedural Tree Generation
+        if (x > 5 && x < WORLD_COLS - 5 && x % 9 === 0 && Math.random() > 0.3) {
+          const treeBaseY = groundY - 1;
+          const treeHeight = 3 + Math.floor(Math.random() * 2);
+          
+          for (let th = 0; th < treeHeight; th++) {
+            if (treeBaseY - th >= 0) world[treeBaseY - th][x] = 4;
+          }
+          const topY = treeBaseY - treeHeight;
+          for (let ly = topY - 1; ly <= topY + 1; ly++) {
+            for (let lx = x - 1; lx <= x + 1; lx++) {
+              if (ly >= 0 && ly < WORLD_ROWS && lx >= 0 && lx < WORLD_COLS) {
+                if (world[ly][lx] === 0) world[ly][lx] = 5;
+              }
+            }
+          }
+        }
+      }
+
+      player.x = (WORLD_COLS / 2) * TILE_SIZE;
+      player.y = (surfaceLevel - 6) * TILE_SIZE;
+    }
+
+    // Input Handlers
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code.startsWith('Digit')) {
+        const num = parseInt(e.code.replace('Digit', ''));
+        if (num >= 1 && num <= 6) selectedHotbarIdx = num - 1;
+      }
+      if (!gameStarted && (e.code === 'Space' || e.code === 'Enter')) {
+        startGame();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mouseX = (e.clientX - rect.left) * scaleX;
+      const mouseY = (e.clientY - rect.top) * scaleY;
+
+      const camX = player.x + player.width / 2 - canvas.width / 2;
+      const camY = player.y + player.height / 2 - canvas.height / 2;
+
+      mouse.worldX = mouseX + camX;
+      mouse.worldY = mouseY + camY;
+      mouse.gridX = Math.floor(mouse.worldX / TILE_SIZE);
+      mouse.gridY = Math.floor(mouse.worldY / TILE_SIZE);
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      if (e.deltaY > 0) {
+        selectedHotbarIdx = (selectedHotbarIdx + 1) % HOTBAR_ITEMS.length;
+      } else if (e.deltaY < 0) {
+        selectedHotbarIdx = (selectedHotbarIdx - 1 + HOTBAR_ITEMS.length) % HOTBAR_ITEMS.length;
+      }
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (!gameStarted) return;
+      e.preventDefault();
+      if (e.button === 0 && !e.shiftKey) {
+        handleMine();
+      } else if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
+        handlePlace();
+      }
+    });
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Mobile touch controls
+    document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); keys['KeyA'] = true; });
+    document.getElementById('btn-left').addEventListener('touchend', (e) => { e.preventDefault(); keys['KeyA'] = false; });
+    document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); keys['KeyD'] = true; });
+    document.getElementById('btn-right').addEventListener('touchend', (e) => { e.preventDefault(); keys['KeyD'] = false; });
+    document.getElementById('btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); keys['KeyW'] = true; });
+    document.getElementById('btn-jump').addEventListener('touchend', (e) => { e.preventDefault(); keys['KeyW'] = false; });
+    
+    const modeBtn = document.getElementById('btn-mode');
+    modeBtn.addEventListener('click', () => {
+      touchMode = touchMode === 'mine' ? 'place' : 'mine';
+      modeBtn.innerText = touchMode.toUpperCase();
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (!gameStarted) return;
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mouseX = (touch.clientX - rect.left) * scaleX;
+      const mouseY = (touch.clientY - rect.top) * scaleY;
+      const camX = player.x + player.width / 2 - canvas.width / 2;
+      const camY = player.y + player.height / 2 - canvas.height / 2;
+      mouse.gridX = Math.floor((mouseX + camX) / TILE_SIZE);
+      mouse.gridY = Math.floor((mouseY + camY) / TILE_SIZE);
+
+      if (touchMode === 'mine') handleMine();
+      else handlePlace();
+    });
+
+    function isBlockInRange(gx, gy) {
+      const pGx = Math.floor((player.x + player.width / 2) / TILE_SIZE);
+      const pGy = Math.floor((player.y + player.height / 2) / TILE_SIZE);
+      return Math.hypot(gx - pGx, gy - pGy) <= 6;
+    }
+
+    function handleMine() {
+      const gx = mouse.gridX;
+      const gy = mouse.gridY;
+      if (gx < 0 || gx >= WORLD_COLS || gy < 0 || gy >= WORLD_ROWS) return;
+      if (!isBlockInRange(gx, gy)) return;
+
+      const blockType = world[gy][gx];
+      if (blockType !== 0 && !BLOCKS[blockType].unbreakable) {
+        inventory[blockType] = (inventory[blockType] || 0) + 1;
+        world[gy][gx] = 0;
+        playSound('mine');
+      }
+    }
+
+    function handlePlace() {
+      const gx = mouse.gridX;
+      const gy = mouse.gridY;
+      if (gx < 0 || gx >= WORLD_COLS || gy < 0 || gy >= WORLD_ROWS) return;
+      if (!isBlockInRange(gx, gy)) return;
+
+      const selectedType = HOTBAR_ITEMS[selectedHotbarIdx];
+      if (world[gy][gx] === 0 && (inventory[selectedType] || 0) > 0) {
+        const blockRect = { x: gx * TILE_SIZE, y: gy * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE };
+        if (!checkOverlap(player, blockRect)) {
+          world[gy][gx] = selectedType;
+          inventory[selectedType]--;
+          playSound('place');
+        }
+      }
+    }
+
+    function checkOverlap(r1, r2) {
+      return (
+        r1.x < r2.x + r2.width &&
+        r1.x + r1.width > r2.x &&
+        r1.y < r2.y + r2.height &&
+        r1.y + r1.height > r2.y
+      );
+    }
+
+    // Physics Loop
+    function updatePlayer() {
+      const speed = 2.8;
+      player.vx = 0;
+      if (keys['KeyA'] || keys['ArrowLeft']) {
+        player.vx = -speed;
+        player.facing = 'left';
+      }
+      if (keys['KeyD'] || keys['ArrowRight']) {
+        player.vx = speed;
+        player.facing = 'right';
+      }
+
+      if ((keys['KeyW'] || keys['Space'] || keys['ArrowUp']) && player.grounded) {
+        player.vy = -7.5;
+        player.grounded = false;
+        playSound('jump');
+      }
+
+      player.vy += 0.4; // Gravity
+      if (player.vy > 9) player.vy = 9;
+
+      player.x += player.vx;
+      collide('x');
+
+      player.y += player.vy;
+      player.grounded = false;
+      collide('y');
+
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.width > WORLD_COLS * TILE_SIZE) {
+        player.x = WORLD_COLS * TILE_SIZE - player.width;
+      }
+    }
+
+    function collide(axis) {
+      const startCol = Math.floor(player.x / TILE_SIZE);
+      const endCol = Math.floor((player.x + player.width) / TILE_SIZE);
+      const startRow = Math.floor(player.y / TILE_SIZE);
+      const endRow = Math.floor((player.y + player.height) / TILE_SIZE);
+
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          if (r >= 0 && r < WORLD_ROWS && c >= 0 && c < WORLD_COLS) {
+            const blockId = world[r][c];
+            if (BLOCKS[blockId] && BLOCKS[blockId].solid) {
+              const tileRect = { x: c * TILE_SIZE, y: r * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE };
+              if (checkOverlap(player, tileRect)) {
+                if (axis === 'x') {
+                  if (player.vx > 0) player.x = tileRect.x - player.width;
+                  else if (player.vx < 0) player.x = tileRect.x + tileRect.width;
+                }
+                if (axis === 'y') {
+                  if (player.vy > 0) {
+                    player.y = tileRect.y - player.height;
+                    player.vy = 0;
+                    player.grounded = true;
+                  } else if (player.vy < 0) {
+                    player.y = tileRect.y + tileRect.height;
+                    player.vy = 0;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Render Canvas Frame
+    function render() {
+      const camX = Math.floor(player.x + player.width / 2 - canvas.width / 2);
+      const camY = Math.floor(player.y + player.height / 2 - canvas.height / 2);
+
+      // Sky Background
+      ctx.fillStyle = '#1d233a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Render World Blocks
+      const startCol = Math.max(0, Math.floor(camX / TILE_SIZE));
+      const endCol = Math.min(WORLD_COLS, Math.ceil((camX + canvas.width) / TILE_SIZE));
+      const startRow = Math.max(0, Math.floor(camY / TILE_SIZE));
+      const endRow = Math.min(WORLD_ROWS, Math.ceil((camY + canvas.height) / TILE_SIZE));
+
+      for (let r = startRow; r < endRow; r++) {
+        for (let c = startCol; c < endCol; c++) {
+          const bId = world[r][c];
+          if (bId !== 0) {
+            const screenX = c * TILE_SIZE - camX;
+            const screenY = r * TILE_SIZE - camY;
+            const block = BLOCKS[bId];
+
+            ctx.fillStyle = block.color;
+            ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+
+            if (bId === 1) { // Grass top
+              ctx.fillStyle = block.topColor;
+              ctx.fillRect(screenX, screenY, TILE_SIZE, 4);
+            } else if (bId === 3) { // Stone detail
+              ctx.fillStyle = '#555';
+              ctx.fillRect(screenX + 3, screenY + 4, 4, 4);
+              ctx.fillRect(screenX + 11, screenY + 12, 5, 4);
+            } else if (bId === 4) { // Wood texture
+              ctx.fillStyle = '#48331e';
+              ctx.fillRect(screenX + 4, screenY, 3, TILE_SIZE);
+              ctx.fillRect(screenX + 13, screenY, 3, TILE_SIZE);
+            } else if (bId === 6) { // Brick lines
+              ctx.strokeStyle = '#6e2b20';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+            }
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+          }
+        }
+      }
+
+      // Highlight targeted block grid
+      if (mouse.gridX >= 0 && mouse.gridX < WORLD_COLS && mouse.gridY >= 0 && mouse.gridY < WORLD_ROWS) {
+        if (isBlockInRange(mouse.gridX, mouse.gridY)) {
+          const hX = mouse.gridX * TILE_SIZE - camX;
+          const hY = mouse.gridY * TILE_SIZE - camY;
+          ctx.strokeStyle = '#4de8ff';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(hX, hY, TILE_SIZE, TILE_SIZE);
+        }
+      }
+
+      // Render Player Avatar
+      const pScreenX = player.x - camX;
+      const pScreenY = player.y - camY;
+      
+      ctx.fillStyle = '#00aaaa'; // Shirt
+      ctx.fillRect(pScreenX + 2, pScreenY + 12, player.width - 4, 12);
+
+      ctx.fillStyle = '#2b3990'; // Pants
+      ctx.fillRect(pScreenX + 2, pScreenY + 24, player.width - 4, 8);
+
+      ctx.fillStyle = '#ffc0a0'; // Head skin
+      ctx.fillRect(pScreenX + 1, pScreenY, 12, 12);
+
+      ctx.fillStyle = '#4a2c11'; // Hair
+      ctx.fillRect(pScreenX + 1, pScreenY, 12, 4);
+
+      ctx.fillStyle = '#ffffff'; // Eye
+      const eyeX = player.facing === 'right' ? pScreenX + 7 : pScreenX + 2;
+      ctx.fillRect(eyeX, pScreenY + 5, 4, 3);
+      ctx.fillStyle = '#000000';
+      const pupilX = player.facing === 'right' ? pScreenX + 9 : pScreenX + 2;
+      ctx.fillRect(pupilX, pScreenY + 6, 2, 2);
+
+      drawHotbar();
+    }
+
+    function drawHotbar() {
+      const slotSize = 36;
+      const totalWidth = HOTBAR_ITEMS.length * slotSize + (HOTBAR_ITEMS.length - 1) * 6;
+      const startX = (canvas.width - totalWidth) / 2;
+      const startY = canvas.height - 48;
+
+      ctx.fillStyle = 'rgba(18, 16, 31, 0.85)';
+      ctx.fillRect(startX - 8, startY - 6, totalWidth + 16, slotSize + 12);
+      ctx.strokeStyle = '#ff5fd2';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(startX - 8, startY - 6, totalWidth + 16, slotSize + 12);
+
+      HOTBAR_ITEMS.forEach((bId, idx) => {
+        const x = startX + idx * (slotSize + 6);
+        const y = startY;
+
+        ctx.fillStyle = (idx === selectedHotbarIdx) ? '#ff5fd2' : '#2a244d';
+        ctx.fillRect(x, y, slotSize, slotSize);
+
+        ctx.fillStyle = '#12101f';
+        ctx.fillRect(x + 2, y + 2, slotSize - 4, slotSize - 4);
+
+        const block = BLOCKS[bId];
+        ctx.fillStyle = block.color;
+        ctx.fillRect(x + 8, y + 8, 20, 20);
+
+        if (bId === 1) {
+          ctx.fillStyle = block.topColor;
+          ctx.fillRect(x + 8, y + 8, 20, 5);
+        }
+
+        const count = inventory[bId] || 0;
+        ctx.fillStyle = '#4de8ff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(count, x + slotSize - 3, y + slotSize - 3);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.fillText(idx + 1, x + 3, y + 11);
+      });
+    }
+
+    function gameLoop() {
+      if (gameStarted) {
+        updatePlayer();
+      }
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startGame() {
+      if (!gameStarted) {
+        gameStarted = true;
+        startScreen.style.display = 'none';
+      }
+    }
+
+    startBtn.addEventListener('click', startGame);
+
+    generateWorld();
+    gameLoop();
+  </script>
+</body>
+</html>
