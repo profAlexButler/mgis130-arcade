@@ -1,0 +1,70 @@
+/* The arcade's look. Colors are set once here and used everywhere. */
+:root {
+  --bg: #12101f;
+  --card: #1e1a33;
+  --text: #f2f0ff;
+  --muted: #a9a3c9;
+  --neon: #ff5fd2;
+  --neon-2: #4de8ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Courier New", monospace;
+  padding: 24px 16px;
+}
+
+header { text-align: center; margin-bottom: 32px; }
+
+h1 {
+  font-size: 48px;
+  letter-spacing: 6px;
+  margin: 0 0 8px;
+  color: var(--neon);
+  text-shadow: 0 0 12px var(--neon);
+}
+
+header p, footer p { color: var(--muted); }
+
+#game-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.card {
+  display: block;
+  background: var(--card);
+  border: 2px solid var(--neon-2);
+  border-radius: 12px;
+  padding: 20px;
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0 18px var(--neon-2);
+}
+
+.card h2 { margin: 0 0 8px; color: var(--neon-2); }
+.card .controls { font-size: 13px; color: var(--muted); }
+
+.card .play {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: var(--neon);
+  color: var(--bg);
+  font-weight: bold;
+  border-radius: 6px;
+}
+
+footer { text-align: center; margin-top: 32px; }

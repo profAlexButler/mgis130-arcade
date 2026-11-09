@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pitfall! Retro Atari Clone (MVP)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Font for Retro Look -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      background-color: #121214;
+      font-family: 'Press Start 2P', monospace;
+      image-rendering: pixelated;
+    }
+    canvas {
+      image-rendering: pixelated;
+      background-color: #000;
+    }
+    /* Hide scrollbars & disable text selection for smooth gaming */
+    .no-select {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* CRT Visual Effects Overlays */
+    .crt-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .crt-vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.8);
+      background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.4) 100%);
+      z-index: 11;
+      pointer-events: none;
+    }
+    @keyframes subtle-flicker {
+      0% { opacity: 0.99; }
+      50% { opacity: 1.0; }
+      100% { opacity: 0.985; }
+    }
+    .crt-flicker {
+      animation: subtle-flicker 0.15s infinite;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-start min-h-screen text-white p-2 md:p-4 no-select overflow-y-auto">
+<a href="../index.html" style="position:fixed;left:10px;bottom:10px;z-index:9999;font:14px Arial,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px;text-decoration:none;">&larr; Back to the arcade</a>
+
+
+  <!-- Header & Console Frame -->
+  <div class="w-full max-w-4xl flex flex-col items-center">
+    <!-- Header Title -->
+    <div class="text-center my-2">
+      <h1 class="text-2xl md:text-4xl font-extrabold text-amber-500 tracking-wider drop-shadow-md">PITFALL!</h1>
+      <p class="text-[9px] md:text-xs text-emerald-400 mt-1 uppercase">With Maximum Retro Game Juice & CRT Overlay</p>
+    </div>
+
+    <!-- Main Game Cabinet Grid -->
+    <div class="w-full bg-stone-900 border-4 border-amber-600 rounded-xl p-3 shadow-2xl flex flex-col items-center gap-4">
+      
+      <!-- Top Scoreboard Panel -->
+      <div class="w-full bg-black border-2 border-stone-700 p-2 rounded flex flex-wrap justify-between items-center text-[10px] text-yellow-400 gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-stone-500">SCORE:</span>
+          <span id="scoreVal" class="text-white font-bold">2000</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-stone-500">TREASURES:</span>
+          <span id="treasureProgress" class="text-cyan-400 font-bold">0 / 6</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-stone-500">TIME:</span>
+          <span id="timeVal" class="text-red-500 font-bold">20:00</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-stone-500">SCREEN:</span>
+          <span id="screenVal" class="text-cyan-400 font-bold">1</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-stone-500">LIVES:</span>
+          <div id="livesContainer" class="flex gap-1 text-red-500">
+            ▲ ▲ ▲
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas Container with CRT Toggles -->
+      <div class="relative w-full aspect-[8/5] max-w-3xl bg-black rounded overflow-hidden border-2 border-stone-800">
+        <!-- CRT Screen simulation overlays -->
+        <div id="crtOverlay" class="crt-overlay crt-flicker"></div>
+        <div id="crtVignette" class="crt-vignette"></div>
+
+        <canvas id="gameCanvas" width="640" height="400" class="w-full h-full"></canvas>
+
+        <!-- Dynamic Game State Overlay (Start, Game Over, Victory) -->
+        <div id="overlayScreen" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center text-center p-6 transition-all duration-300 z-20">
+          <h2 id="overlayTitle" class="text-xl md:text-3xl text-amber-500 mb-4 animate-pulse">PITFALL HARRY</h2>
+          
+          <!-- Dynamic Stats Box (Hidden on boot, shown on Game Over / Victory) -->
+          <div id="statsBox" class="hidden bg-stone-950 border-2 border-stone-800 p-4 rounded-lg my-4 w-full max-w-md text-left text-xs space-y-2">
+            <p class="flex justify-between"><span>Final Score:</span> <span id="finalScore" class="text-white font-bold">0</span></p>
+            <p class="flex justify-between"><span>Treasures Grabbed:</span> <span id="finalTreasures" class="text-cyan-400 font-bold">0 / 6</span></p>
+            <p class="flex justify-between"><span>Time Remaining:</span> <span id="finalTime" class="text-red-500 font-bold">20:00</span></p>
+            <p class="flex justify-between"><span>Personal High Score:</span> <span id="highScoreVal" class="text-yellow-400 font-bold">2000</span></p>
+            <p id="rankLabel" class="text-center pt-2 text-emerald-400 uppercase font-bold text-[10px] border-t border-stone-800"></p>
+          </div>
+
+          <p id="overlaySubtitle" class="text-[9px] md:text-xs text-stone-300 max-w-md leading-relaxed mb-6">
+            Explore the depths! Secure all 6 golden/silver treasures across the jungle loop to win before time or lives expire.
+          </p>
+          <button id="startBtn" class="bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-bold py-3 px-6 rounded-lg text-xs md:text-sm border-b-4 border-amber-800 transition transform active:scale-95">
+            START ADVENTURE
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Tips Panel -->
+      <div class="w-full text-[9px] text-stone-400 text-center leading-relaxed">
+        Keyboard: <b class="text-white">[← / →]</b> Move | <b class="text-white">[Space]</b> Jump | <b class="text-white">[↑ / ↓]</b> Climb Ladders / Swing Release
+      </div>
+
+      <!-- Mobile Controls (Responsive Display) -->
+      <div class="w-full grid grid-cols-3 gap-2 max-w-md my-1 md:hidden">
+        <!-- D-Pad Directional Arrows -->
+        <div class="col-span-2 grid grid-cols-3 gap-1">
+          <div></div>
+          <button id="btnUp" class="bg-stone-800 active:bg-amber-500 p-3 rounded flex items-center justify-center text-white text-lg"><i data-lucide="arrow-up"></i></button>
+          <div></div>
+          <button id="btnLeft" class="bg-stone-800 active:bg-amber-500 p-3 rounded flex items-center justify-center text-white text-lg"><i data-lucide="arrow-left"></i></button>
+          <button id="btnDown" class="bg-stone-800 active:bg-amber-500 p-3 rounded flex items-center justify-center text-white text-lg"><i data-lucide="arrow-down"></i></button>
+          <button id="btnRight" class="bg-stone-800 active:bg-amber-500 p-3 rounded flex items-center justify-center text-white text-lg"><i data-lucide="arrow-right"></i></button>
+        </div>
+        <!-- Action Buttons -->
+        <div class="flex flex-col justify-center gap-1">
+          <button id="btnJump" class="bg-red-700 active:bg-red-500 h-full rounded text-white text-xs font-bold uppercase tracking-wider shadow">JUMP</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Developer Command Center / Sandbox Testing Panel -->
+    <div class="w-full bg-stone-900 border-2 border-stone-700 rounded-lg p-4 mt-4 shadow-xl text-xs">
+      <div class="flex items-center gap-2 border-b border-stone-700 pb-2 mb-3 justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="flask-conical" class="text-cyan-400 w-5 h-5"></i>
+          <h3 class="text-stone-200 font-bold tracking-wide text-xs">JUICED RETRO TESTBENCH</h3>
+        </div>
+        <span class="text-[9px] text-stone-500">Particle Engine: Active</span>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Teleport Screen Panel -->
+        <div class="bg-stone-950 p-3 rounded border border-stone-800">
+          <h4 class="text-amber-500 mb-2 font-bold text-[10px] uppercase">1. Quick Teleporter</h4>
+          <div class="grid grid-cols-2 gap-1 text-[9px]">
+            <button onclick="teleportToScreen(0)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🏁 Scr 1: Gold Logs</button>
+            <button onclick="teleportToScreen(1)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🐒 Scr 2: Tar & Rope</button>
+            <button onclick="teleportToScreen(2)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🐊 Scr 3: Crocodiles</button>
+            <button onclick="teleportToScreen(3)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🔥 Scr 4: Snake & Fire</button>
+            <button onclick="teleportToScreen(4)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🧱 Scr 5: Tunnel Gate</button>
+            <button onclick="teleportToScreen(5)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">💎 Scr 6: Vault Vault</button>
+            <button onclick="teleportToScreen(6)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🌋 Scr 7: Triple Flame</button>
+            <button onclick="teleportToScreen(7)" class="bg-stone-800 hover:bg-stone-700 p-1 text-left rounded truncate">🔮 Scr 8: Ring Swamp</button>
+          </div>
+        </div>
+
+        <!-- Mechanics Sandbox Controls -->
+        <div class="bg-stone-950 p-3 rounded border border-stone-800 flex flex-col justify-between">
+          <div>
+            <h4 class="text-amber-500 mb-2 font-bold text-[10px] uppercase">2. Juice & Screen Settings</h4>
+            <div class="flex flex-col gap-2 text-[9px]">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="crtToggle" checked class="rounded bg-stone-800 border-stone-700 text-amber-500">
+                <span class="text-emerald-400 font-bold">CRT TV Scanline Filter</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="invincibilityToggle" class="rounded bg-stone-800 border-stone-700 text-amber-500">
+                <span>God Mode (Invincible)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="infiniteTimeToggle" class="rounded bg-stone-800 border-stone-700 text-amber-500">
+                <span>Freeze Game Timer</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="muteToggle" class="rounded bg-stone-800 border-stone-700 text-amber-500">
+                <span>Mute Synthesizer SFX</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spawn/Action Hub -->
+        <div class="bg-stone-950 p-3 rounded border border-stone-800 flex flex-col justify-between">
+          <div>
+            <h4 class="text-amber-500 mb-2 font-bold text-[10px] uppercase">3. Sandbox Juicy Toys</h4>
+            <div class="grid grid-cols-2 gap-1 text-[9px]">
+              <button onclick="spawnJuiceParticles()" class="bg-stone-800 hover:bg-cyan-900 p-1 rounded text-cyan-400 font-bold">✨ SPARKLE BURST</button>
+              <button onclick="triggerImpactShake()" class="bg-stone-800 hover:bg-red-900 p-1 rounded text-red-400 font-bold">🫨 SCREEN SHAKE</button>
+              <button onclick="gainExtraLife()" class="bg-stone-800 hover:bg-emerald-900 p-1 rounded text-emerald-400 font-bold">+ 1 EXTRA LIFE</button>
+              <button onclick="instantWin()" class="bg-stone-800 hover:bg-cyan-950 p-1 rounded text-yellow-300 font-bold">🏆 INSTANT WIN</button>
+            </div>
+          </div>
+          <div class="text-[8px] text-stone-400 mt-2">
+            Try jumping or getting hit to inspect localized physical particle sprays.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // ==========================================
+    // 1. SOUND GENERATION SYSTEM (WEB AUDIO)
+    // ==========================================
+    class AtariAudio {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      }
+      playTone(freqStart, freqEnd, duration, type = 'square', volume = 0.1) {
+        if (this.muted) return;
+        this.init();
+        try {
+          const osc = this.ctx.createOscillator();
+          const gainNode = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freqStart, this.ctx.currentTime);
+          if (freqEnd !== freqStart) {
+            osc.frequency.exponentialRampToValueAtTime(freqEnd, this.ctx.currentTime + duration);
+          }
+          
+          gainNode.gain.setValueAtTime(volume, this.ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+          
+          osc.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+          
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {}
+      }
+      playNoise(duration, volume = 0.1) {
+        if (this.muted) return;
+        this.init();
+        try {
+          const bufferSize = this.ctx.sampleRate * duration;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+          const gainNode = this.ctx.createGain();
+          gainNode.gain.setValueAtTime(volume, this.ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+          noise.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+          noise.start();
+        } catch (e) {}
+      }
+      jump() { this.playTone(180, 520, 0.18, 'sawtooth', 0.08); }
+      coin() { this.playTone(880, 1760, 0.3, 'square', 0.08); }
+      hit() { this.playTone(150, 40, 0.4, 'triangle', 0.15); }
+      fall() { this.playTone(400, 80, 0.8, 'sawtooth', 0.1); }
+      swing() { this.playTone(220, 260, 0.4, 'sine', 0.1); }
+      death() {
+        this.playTone(300, 50, 0.6, 'sawtooth', 0.2);
+        this.playNoise(0.5, 0.2);
+      }
+      victoryArpeggio() {
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => {
+            this.playTone(freq, freq * 1.2, 0.2, 'square', 0.08);
+          }, idx * 120);
+        });
+      }
+    }
+    const audio = new AtariAudio();
+
+    // ==========================================
+    // 2. CONFIGURATION & JUICY STATE
+    // ==========================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const PALETTE = {
+      sky: '#4080ff',
+      canopyDark: '#005c00',
+      canopyLight: '#44a800',
+      trunk: '#704000',
+      ground: '#e0a800',
+      pit: '#1a0c00',
+      water: '#0040aa',
+      ladder: '#9c5a3c',
+      tunnelBg: '#050510',
+      brick: '#a03000',
+      brickJoint: '#301000',
+      harryShirt: '#3cb043',
+      harrySkin: '#ffc8a0',
+      harryPants: '#e0c030',
+      textYellow: '#e0a800',
+      gold: '#ffd700',
+      silver: '#c0c0c0',
+      ring: '#00ffff'
+    };
+
+    const VW = 640;
+    const VH = 400;
+
+    // Interactive Screen Shake state
+    let shakeIntensity = 0;
+    let shakeDuration = 0;
+
+    let gameState = {
+      score: 2000,
+      timeLeft: 1200,
+      lives: 3,
+      currentScreen: 0,
+      active: false,
+      gameOver: false,
+      victory: false,
+      godMode: false,
+      freezeTimer: false,
+      highSpeed: false,
+      highScore: 2000,
+      collectedTreasures: {} 
+    };
+
+    const keys = {
+      left: false, right: false, up: false, down: false, space: false
+    };
+
+    // ==========================================
+    // JUICE SYSTEM CLASSES: PARTICLES & FLOATING STATS
+    // ==========================================
+    class Particle {
+      constructor(x, y, color, size, vx, vy, gravity = 0.2, friction = 0.98, life = 40) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.size = size;
+        this.vx = vx;
+        this.vy = vy;
+        this.gravity = gravity;
+        this.friction = friction;
+        this.life = life;
+        this.maxLife = life;
+      }
+      update() {
+        this.vx *= this.friction;
+        this.vy += this.gravity;
+        this.vy *= this.friction;
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+      }
+      draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life / this.maxLife;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
+    class FloatingText {
+      constructor(x, y, text, color) {
+        this.x = x;
+        this.y = y;
+        this.text = text;
+        this.color = color;
+        this.life = 60;
+        this.maxLife = 60;
+      }
+      update() {
+        this.y -= 0.8; // Float up slowly
+        this.life--;
+      }
+      draw() {
+        ctx.font = '10px "Press Start 2P"';
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life / this.maxLife;
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
+    let particles = [];
+    let floatingTexts = [];
+
+    function addShake(intensity, duration) {
+      shakeIntensity = intensity;
+      shakeDuration = duration;
+    }
+
+    function addParticles(x, y, color, count, customVel = false) {
+      for (let i = 0; i < count; i++) {
+        const vx = customVel ? (Math.random() * 6 - 3) : (Math.random() * 4 - 2);
+        const vy = customVel ? -(Math.random() * 5 + 2) : -(Math.random() * 3 + 1);
+        particles.push(new Particle(x, y, color, Math.random() * 4 + 2, vx, vy));
+      }
+    }
+
+    function addFloatingText(x, y, text, color = '#ffffff') {
+      floatingTexts.push(new FloatingText(x, y, text, color));
+    }
+
+    // ==========================================
+    // 3. EXPANDED WORLD TEMPLATES (8 DISTINCT SCREENS)
+    // ==========================================
+    const SCREENS = [
+      {
+        id: 0,
+        type: 'standard',
+        hasLogs: true,
+        logSpawnDelay: 150,
+        hasPit: false,
+        pitType: null,
+        hasLadders: false,
+        hasRope: false,
+        hasSnake: false,
+        hasFire: false,
+        hasTreasure: true,
+        treasureType: 'gold',
+        treasureX: 450,
+        undergroundBlocked: false
+      },
+      {
+        id: 1,
+        type: 'rope-swing',
+        hasLogs: false,
+        hasPit: true,
+        pitType: 'tar',
+        pitWidth: 180,
+        hasLadders: false,
+        hasRope: true,
+        hasSnake: false,
+        hasFire: false,
+        hasTreasure: false,
+        undergroundBlocked: true
+      },
+      {
+        id: 2,
+        type: 'crocodiles',
+        hasLogs: false,
+        hasPit: true,
+        pitType: 'water',
+        pitWidth: 220,
+        hasLadders: false,
+        hasRope: false,
+        hasSnake: false,
+        hasFire: false,
+        hasTreasure: true,
+        treasureType: 'silver',
+        treasureX: 520,
+        undergroundBlocked: false
+      },
+      {
+        id: 3,
+        type: 'fire-snake',
+        hasLogs: true,
+        logSpawnDelay: 200,
+        hasPit: false,
+        hasLadders: false,
+        hasRope: false,
+        hasSnake: true,
+        snakeX: 300,
+        hasFire: true,
+        fireX: 480,
+        hasTreasure: true,
+        treasureType: 'ring',
+        treasureX: 570,
+        undergroundBlocked: false
+      },
+      {
+        id: 4,
+        type: 'tunnel-hub',
+        hasLogs: false,
+        hasPit: true,
+        pitType: 'hole',
+        pitWidth: 60,
+        hasLadders: true,
+        hasRope: false,
+        hasSnake: false,
+        hasFire: false,
+        hasTreasure: false,
+        undergroundBlocked: false
+      },
+      {
+        id: 5,
+        type: 'treasure-vault',
+        hasLogs: true,
+        logSpawnDelay: 120,
+        hasPit: false,
+        hasLadders: true,
+        hasRope: false,
+        hasSnake: false,
+        hasFire: false,
+        hasTreasure: true,
+        treasureType: 'gold',
+        treasureX: 320,
+        undergroundBlocked: false
+      },
+      {
+        id: 6,
+        type: 'triple-fire',
+        hasLogs: false,
+        hasPit: false,
+        hasLadders: false,
+        hasRope: false,
+        hasSnake: false,
+        hasFire: true,
+        fireX: 280,
+        hasTreasure: true,
+        treasureType: 'silver',
+        treasureX: 440,
+        undergroundBlocked: true
+      },
+      {
+        id: 7,
+        type: 'ring-swamp',
+        hasLogs: false,
+        hasPit: true,
+        pitType: 'water',
+        pitWidth: 240,
+        hasLadders: false,
+        hasRope: true,
+        hasSnake: true,
+        snakeX: 120,
+        hasFire: false,
+        hasTreasure: true,
+        treasureType: 'ring',
+        treasureX: 500,
+        undergroundBlocked: false
+      }
+    ];
+
+    const TOTAL_TREASURES_COUNT = SCREENS.filter(s => s.hasTreasure).length;
+
+    // ==========================================
+    // 4. ENTITIES (PLAYER & HAZARDS)
+    // ==========================================
+    class Harry {
+      constructor() {
+        this.reset();
+        this.wasGrounded = true;
+      }
+
+      reset() {
+        this.x = 80;
+        this.y = 230; 
+        this.width = 16;
+        this.height = 36;
+        this.vx = 0;
+        this.vy = 0;
+        this.isGrounded = true;
+        this.isClimbing = false;
+        this.isSwinging = false;
+        this.swingRopeIdx = -1;
+        this.swingAngle = 0;
+        this.invincibleTimer = 0;
+        this.climbSpeed = 2.5;
+        this.facing = 1; 
+        this.animFrame = 0;
+        this.isRunning = false;
+        this.isDying = false;
+        this.deathTimer = 0;
+        this.respawnX = 80;
+        this.respawnY = 230;
+        this.isUnderground = false;
+      }
+
+      update() {
+        if (this.isDying) {
+          this.deathTimer--;
+          this.y += 1.5; 
+          if (this.deathTimer <= 0) {
+            this.handleRespawn();
+          }
+          return;
+        }
+
+        if (this.invincibleTimer > 0) {
+          this.invincibleTimer--;
+        }
+
+        const currentRunSpeed = gameState.highSpeed ? 5.5 : 3.5;
+
+        if (this.isSwinging) {
+          if (rope) {
+            this.x = rope.x + Math.sin(rope.angle) * (rope.length - 10);
+            this.y = rope.y + Math.cos(rope.angle) * (rope.length - 10);
+            
+            // Swing particles kick off body
+            if (Math.random() < 0.25) {
+              particles.push(new Particle(this.x + 8, this.y + 16, '#dfdf9f', 2, Math.random() * 2 - 1, 1, 0.05, 0.95));
+            }
+
+            if (keys.down || keys.space || keys.up) {
+              this.isSwinging = false;
+              this.vy = -3.5; 
+              this.vx = rope.angle * 7.5; 
+              audio.playTone(200, 100, 0.2, 'sine', 0.05);
+              // Jump off dust
+              addParticles(this.x + 8, this.y + 30, '#c2a230', 5);
+            }
+          }
+          return;
+        }
+
+        if (this.isClimbing) {
+          this.vx = 0;
+          if (keys.up) {
+            this.y -= this.climbSpeed;
+            this.animFrame += 0.2;
+            if (Math.random() < 0.15) addParticles(this.x + 8, this.y + 36, '#8b5a2b', 2);
+          } else if (keys.down) {
+            this.y += this.climbSpeed;
+            this.animFrame += 0.2;
+            if (Math.random() < 0.15) addParticles(this.x + 8, this.y, '#8b5a2b', 2);
+          }
+
+          if (this.y < 120) {
+            this.y = 230;
+            this.isClimbing = false;
+            this.isUnderground = false;
+          } else if (this.y > 350) {
+            this.y = 330;
+            this.isClimbing = false;
+            this.isUnderground = true;
+          }
+          return;
+        }
+
+        this.isRunning = false;
+        if (keys.left) {
+          this.vx = -currentRunSpeed;
+          this.facing = -1;
+          this.isRunning = true;
+        } else if (keys.right) {
+          this.vx = currentRunSpeed;
+          this.facing = 1;
+          this.isRunning = true;
+        } else {
+          this.vx = 0;
+        }
+
+        if (keys.space && this.isGrounded) {
+          this.vy = -8.5; 
+          this.isGrounded = false;
+          audio.jump();
+          // Jump dust puff
+          addParticles(this.x + 8, this.y, '#8b6914', 6);
+        }
+
+        this.vy += 0.45; 
+        if (this.vy > 10) this.vy = 10; 
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        const currentGroundY = this.isUnderground ? 330 : 230;
+
+        if (this.y >= currentGroundY) {
+          this.y = currentGroundY;
+          this.vy = 0;
+          this.isGrounded = true;
+        }
+
+        // Juiced: Kick up run dust particles
+        if (this.isRunning && this.isGrounded && Math.random() < 0.35) {
+          const dustX = this.facing === 1 ? this.x : this.x + this.width;
+          particles.push(new Particle(
+            dustX, 
+            this.y, 
+            this.isUnderground ? '#552200' : '#8b6a14', 
+            Math.random() * 3 + 1, 
+            -this.facing * (Math.random() * 1.5), 
+            -(Math.random() * 1.5 + 0.5)
+          ));
+        }
+
+        // Juiced: Landing Shockwave Particle Burst
+        if (!this.wasGrounded && this.isGrounded) {
+          addParticles(this.x + 8, this.y, this.isUnderground ? '#6b3c00' : '#8b6a14', 8);
+          audio.playTone(80, 50, 0.08, 'triangle', 0.1);
+        }
+
+        this.wasGrounded = this.isGrounded;
+
+        if (this.isRunning && this.isGrounded) {
+          this.animFrame += 0.15;
+        }
+
+        if (this.y > 380) {
+          this.die(true); 
+        }
+      }
+
+      die(fellInPit = false) {
+        if (gameState.godMode) return;
+        this.isDying = true;
+        this.deathTimer = 60;
+        this.vx = 0;
+        this.vy = 0;
+        
+        if (fellInPit) {
+          audio.fall();
+          gameState.score = Math.max(0, gameState.score - 250);
+          addFloatingText(this.x, this.y - 20, "-250 PT", "#ff5555");
+          // Water/Tar heavy splash spray
+          const splashColor = SCREENS[gameState.currentScreen].pitType === 'water' ? '#4080ff' : '#221100';
+          for (let i = 0; i < 24; i++) {
+            particles.push(new Particle(
+              this.x + 8, 
+              235, 
+              splashColor, 
+              Math.random() * 5 + 3, 
+              Math.random() * 8 - 4, 
+              -(Math.random() * 8 + 3), 
+              0.15
+            ));
+          }
+          addShake(8, 30);
+        } else {
+          audio.death();
+          gameState.score = Math.max(0, gameState.score - 100);
+          addFloatingText(this.x, this.y - 20, "-100 PT", "#ff5555");
+          addParticles(this.x + 8, this.y - 15, '#ff3333', 15);
+          addShake(12, 40);
+        }
+        updateScoreBoard();
+      }
+
+      handleRespawn() {
+        gameState.lives--;
+        updateScoreBoard();
+        if (gameState.lives <= 0) {
+          triggerEndState(false);
+        } else {
+          this.reset();
+          this.x = 40;
+          this.y = this.isUnderground ? 330 : 230;
+          this.invincibleTimer = 90; 
+        }
+      }
+
+      draw() {
+        if (this.invincibleTimer > 0 && Math.floor(this.invincibleTimer / 4) % 2 === 0) {
+          return;
+        }
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        if (this.facing === -1) {
+          ctx.scale(-1, 1);
+          ctx.translate(-this.width, 0);
+        }
+
+        // Head/Hair
+        ctx.fillStyle = PALETTE.harrySkin;
+        ctx.fillRect(4, -34, 8, 8); 
+        ctx.fillStyle = '#cc2200'; 
+        ctx.fillRect(4, -36, 8, 2);
+
+        // Shirt / Torso
+        ctx.fillStyle = PALETTE.harryShirt;
+        ctx.fillRect(2, -26, 12, 14);
+
+        // Arms (Animation Cycles)
+        ctx.fillStyle = PALETTE.harrySkin;
+        const walkCycle = Math.floor(this.animFrame) % 4;
+        if (this.isSwinging) {
+          ctx.fillRect(8, -32, 4, 8);
+        } else if (!this.isGrounded) {
+          ctx.fillRect(-2, -24, 4, 8);
+          ctx.fillRect(14, -20, 4, 8);
+        } else if (this.isRunning) {
+          if (walkCycle === 0 || walkCycle === 2) {
+            ctx.fillRect(0, -22, 3, 8);
+            ctx.fillRect(13, -22, 3, 8);
+          } else {
+            ctx.fillRect(2, -20, 3, 8);
+            ctx.fillRect(11, -24, 3, 8);
+          }
+        } else {
+          ctx.fillRect(0, -24, 3, 10);
+          ctx.fillRect(13, -24, 3, 10);
+        }
+
+        // Pants & Shoes
+        ctx.fillStyle = PALETTE.harryPants;
+        if (!this.isGrounded) {
+          ctx.fillRect(2, -12, 5, 8);
+          ctx.fillRect(9, -12, 5, 5);
+        } else if (this.isRunning) {
+          if (walkCycle === 0) {
+            ctx.fillRect(1, -12, 5, 12);
+            ctx.fillRect(10, -12, 5, 6);
+          } else if (walkCycle === 1) {
+            ctx.fillRect(3, -12, 5, 8);
+            ctx.fillRect(8, -12, 5, 8);
+          } else if (walkCycle === 2) {
+            ctx.fillRect(10, -12, 5, 12);
+            ctx.fillRect(1, -12, 5, 6);
+          } else {
+            ctx.fillRect(2, -12, 5, 10);
+            ctx.fillRect(9, -12, 5, 10);
+          }
+        } else {
+          ctx.fillRect(2, -12, 5, 12);
+          ctx.fillRect(9, -12, 5, 12);
+        }
+
+        ctx.fillStyle = '#000';
+        ctx.fillRect(1, 0, 4, 2);
+        ctx.fillRect(11, 0, 4, 2);
+
+        ctx.restore();
+      }
+    }
+
+    class Log {
+      constructor(x, speed) {
+        this.x = x;
+        this.y = 230; 
+        this.radius = 8;
+        this.speed = speed;
+        this.width = 24;
+        this.height = 10;
+        this.rotationAngle = 0; // Juiced: spinning rolling logging visual
+      }
+
+      update() {
+        this.x -= this.speed;
+        this.rotationAngle -= this.speed * 0.15; // spin dynamically
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y - this.height / 2);
+        ctx.rotate(this.rotationAngle);
+
+        // Core round log barrel representation
+        ctx.fillStyle = PALETTE.trunk;
+        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+        
+        // Rolling wood rings
+        ctx.fillStyle = '#442200';
+        ctx.fillRect(-this.width / 2 + 4, -this.height / 2, 4, this.height);
+        ctx.fillRect(-this.width / 2 + 14, -this.height / 2, 4, this.height);
+
+        ctx.restore();
+      }
+    }
+
+    class Rope {
+      constructor() {
+        this.x = VW / 2;
+        this.y = 80;
+        this.length = 130;
+        this.angle = 0;
+        this.angleVelocity = 0.02;
+        this.maxAngle = 0.8; 
+        this.time = 0;
+      }
+
+      update() {
+        this.time += 0.035;
+        this.angle = this.maxAngle * Math.sin(this.time);
+      }
+
+      draw() {
+        ctx.strokeStyle = '#dfdf9f';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        const endX = this.x + Math.sin(this.angle) * this.length;
+        const endY = this.y + Math.cos(this.angle) * this.length;
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.arc(endX, endY, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    class Crocodile {
+      constructor(x, y, mouthDelayOffset) {
+        this.x = x;
+        this.y = y;
+        this.width = 45;
+        this.height = 15;
+        this.isMouthOpen = false;
+        this.timer = mouthDelayOffset;
+      }
+
+      update() {
+        this.timer++;
+        if (this.timer % 160 < 70) {
+          this.isMouthOpen = true;
+        } else {
+          this.isMouthOpen = false;
+        }
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        ctx.fillStyle = '#005f00';
+        ctx.fillRect(0, -6, this.width, 10);
+
+        ctx.fillStyle = '#003a00';
+        ctx.fillRect(8, -8, 4, 2);
+        ctx.fillRect(18, -8, 4, 2);
+        ctx.fillRect(28, -8, 4, 2);
+
+        // Blinking yellow crocodile eyes (Juiced!)
+        ctx.fillStyle = (Math.floor(Date.now() / 400) % 4 === 0) ? '#005f00' : '#ffff00';
+        ctx.fillRect(10, -9, 3, 3);
+
+        ctx.fillStyle = '#005f00';
+        if (this.isMouthOpen) {
+          ctx.fillRect(-12, -14, 14, 4);
+          ctx.fillStyle = '#ff6666'; 
+          ctx.fillRect(-8, -10, 10, 4);
+          ctx.fillStyle = '#ffffff'; 
+          ctx.fillRect(-10, -10, 2, 2);
+          ctx.fillRect(-6, -10, 2, 2);
+        } else {
+          ctx.fillRect(-12, -6, 14, 5);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // ==========================================
+    // 5. CORE INSTANTIATION & RE-INIT
+    // ==========================================
+    const harry = new Harry();
+    const rope = new Rope();
+    let logs = [];
+    let crocodiles = [];
+
+    function initScreen(screenIndex) {
+      logs = [];
+      crocodiles = [];
+      particles = [];
+      floatingTexts = [];
+      const screen = SCREENS[screenIndex];
+
+      if (screen.hasLogs) {
+        logs.push(new Log(VW + 50, 2.5));
+      }
+
+      if (screen.type === 'crocodiles') {
+        const pitLeft = VW / 2 - screen.pitWidth / 2;
+        crocodiles.push(new Crocodile(pitLeft + 30, 230, 0));
+        crocodiles.push(new Crocodile(pitLeft + 90, 230, 40));
+        crocodiles.push(new Crocodile(pitLeft + 150, 230, 80));
+      }
+    }
+
+    // ==========================================
+    // 6. COLLISION & GAME MECHANICS LOGIC
+    // ==========================================
+    function checkCollisions() {
+      if (harry.isDying) return;
+
+      const screen = SCREENS[gameState.currentScreen];
+
+      // Screen transition bounds
+      if (harry.x > VW - 10) {
+        gameState.currentScreen = (gameState.currentScreen + 1) % SCREENS.length;
+        harry.x = 20;
+        initScreen(gameState.currentScreen);
+        audio.playTone(350, 450, 0.1, 'sine', 0.05);
+        updateScoreBoard();
+      } else if (harry.x < 5) {
+        gameState.currentScreen = (gameState.currentScreen - 1 + SCREENS.length) % SCREENS.length;
+        harry.x = VW - 30;
+        initScreen(gameState.currentScreen);
+        audio.playTone(350, 300, 0.1, 'sine', 0.05);
+        updateScoreBoard();
+      }
+
+      const playerBottom = harry.y;
+      const playerTop = harry.y - harry.height;
+      const playerLeft = harry.x;
+      const playerRight = harry.x + harry.width;
+
+      // --- LADDERS MECHANIC ---
+      if (screen.hasLadders) {
+        const ladderX = VW / 2 - 15;
+        const isNearLadder = Math.abs((harry.x + harry.width / 2) - (ladderX + 15)) < 24;
+
+        if (isNearLadder) {
+          if (keys.up && harry.isUnderground && Math.abs(harry.y - 330) < 10) {
+            harry.isClimbing = true;
+            harry.isGrounded = false;
+            harry.x = ladderX + 6;
+          } else if (keys.down && !harry.isUnderground && Math.abs(harry.y - 230) < 10) {
+            harry.isClimbing = true;
+            harry.isGrounded = false;
+            harry.x = ladderX + 6;
+          }
+        }
+      }
+
+      // --- ROPE SWING MECHANIC ---
+      if (screen.hasRope && !harry.isSwinging && !harry.isUnderground) {
+        const ropeEndX = rope.x + Math.sin(rope.angle) * rope.length;
+        const ropeEndY = rope.y + Math.cos(rope.angle) * rope.length;
+
+        const dist = Math.hypot((harry.x + harry.width / 2) - ropeEndX, (harry.y - harry.height / 2) - ropeEndY);
+        if (dist < 28 && !keys.down) {
+          harry.isSwinging = true;
+          harry.isGrounded = false;
+          audio.swing();
+        }
+      }
+
+      // --- SURFACE OBSTACLES ---
+      if (!harry.isUnderground) {
+        
+        // Pits and Holes Collisions
+        if (screen.hasPit) {
+          const pitLeft = VW / 2 - screen.pitWidth / 2;
+          const pitRight = VW / 2 + screen.pitWidth / 2;
+
+          if (harry.x + harry.width / 2 > pitLeft && harry.x + harry.width / 2 < pitRight && harry.y >= 230) {
+            
+            if (screen.type === 'crocodiles') {
+              let steppingOnCroc = false;
+              for (let croc of crocodiles) {
+                const crocLeft = croc.x - 12;
+                const crocRight = croc.x + croc.width - 12;
+                
+                if (harry.x + harry.width / 2 > crocLeft && harry.x + harry.width / 2 < crocRight) {
+                  if (croc.isMouthOpen) {
+                    harry.die(false);
+                    return;
+                  } else {
+                    harry.y = 230;
+                    harry.vy = 0;
+                    harry.isGrounded = true;
+                    steppingOnCroc = true;
+                    break;
+                  }
+                }
+              }
+
+              if (!steppingOnCroc && harry.isGrounded) {
+                harry.die(true); 
+                return;
+              }
+
+            } else {
+              harry.die(true);
+              return;
+            }
+          }
+        }
+
+        // Rolling Logs
+        for (let log of logs) {
+          if (playerRight > log.x && playerLeft < log.x + log.width) {
+            if (playerBottom >= log.y - log.height) {
+              audio.hit();
+              gameState.score = Math.max(0, gameState.score - 50);
+              addFloatingText(log.x, log.y - 30, "-50 PTS", "#ff3333");
+              addParticles(log.x + 12, log.y - 5, '#df7000', 10);
+              addShake(6, 12); // Shake screen on logs hits
+              updateScoreBoard();
+              log.x = -100; // De-spawn
+            }
+          }
+        }
+
+        // Fire & Snake Collision
+        if (screen.hasFire) {
+          const fireSize = 25;
+          if (playerRight > screen.fireX && playerLeft < screen.fireX + fireSize) {
+            if (playerBottom >= 230) {
+              harry.die();
+              return;
+            }
+          }
+        }
+
+        if (screen.hasSnake) {
+          const snakeSize = 20;
+          if (playerRight > screen.snakeX && playerLeft < screen.snakeX + snakeSize) {
+            if (playerBottom >= 230) {
+              harry.die();
+              return;
+            }
+          }
+        }
+
+      } else {
+        // --- UNDERGROUND TUNNEL OBSTACLES ---
+        if (screen.undergroundBlocked) {
+          const wallLeft = VW / 2 - 30;
+          const wallRight = VW / 2 + 30;
+
+          if (playerRight > wallLeft && playerLeft < wallRight) {
+            if (harry.facing === 1) {
+              harry.x = wallLeft - harry.width;
+              // Stone particle puffs on faceplant
+              if (Math.random() < 0.1) addParticles(wallLeft, harry.y - 10, '#888888', 4);
+            } else {
+              harry.x = wallRight;
+              if (Math.random() < 0.1) addParticles(wallRight, harry.y - 10, '#888888', 4);
+            }
+          }
+        }
+
+        // Scorpion Collision
+        const scorpionSpeed = 1.8;
+        if (!screen.undergroundBlocked) {
+          if (!this.scorpionX) {
+            this.scorpionX = 350;
+            this.scorpionDir = -1;
+          }
+          this.scorpionX += scorpionSpeed * this.scorpionDir;
+          if (this.scorpionX < 150 || this.scorpionX > 500) {
+            this.scorpionDir *= -1;
+          }
+
+          if (playerRight > this.scorpionX && playerLeft < this.scorpionX + 24) {
+            if (playerBottom >= 330) {
+              harry.die();
+              return;
+            }
+          }
+        }
+      }
+
+      // --- TREASURE COLLECTION ---
+      const hasCollectedThisScreen = gameState.collectedTreasures[gameState.currentScreen];
+      if (screen.hasTreasure && !hasCollectedThisScreen) {
+        const tx = screen.treasureX;
+        const ty = harry.isUnderground ? 330 : 230;
+
+        if (Math.abs(harry.x - tx) < 25 && Math.abs(harry.y - ty) < 30) {
+          gameState.collectedTreasures[gameState.currentScreen] = true;
+          audio.coin();
+          
+          let award = 1000;
+          let burstColor = PALETTE.gold;
+          if (screen.treasureType === 'silver') {
+            award = 2000;
+            burstColor = PALETTE.silver;
+          }
+          if (screen.treasureType === 'ring') {
+            award = 5000;
+            burstColor = PALETTE.ring;
+          }
+
+          gameState.score += award;
+          
+          // Spawn Sparkle burst (Juiced!)
+          for (let i = 0; i < 30; i++) {
+            particles.push(new Particle(
+              tx + 10, 
+              ty - 10, 
+              burstColor, 
+              Math.random() * 4 + 2, 
+              Math.random() * 8 - 4, 
+              -(Math.random() * 6 + 2), 
+              0.1, 
+              0.96, 
+              60
+            ));
+          }
+
+          addFloatingText(tx, ty - 40, `+${award} pts!`, burstColor);
+          addShake(4, 10);
+          updateScoreBoard();
+          checkWinCondition();
+        }
+      }
+    }
+
+    // ==========================================
+    // 7. HIGH FIDELITY ART / CANVAS DRAWING
+    // ==========================================
+    function drawWorld() {
+      ctx.save();
+
+      // Screen Shake translation offsets
+      if (shakeDuration > 0) {
+        const offsetLeft = (Math.random() * 2 - 1) * shakeIntensity;
+        const offsetTop = (Math.random() * 2 - 1) * shakeIntensity;
+        ctx.translate(offsetLeft, offsetTop);
+        shakeDuration--;
+      }
+
+      // Background Sky
+      ctx.fillStyle = PALETTE.sky;
+      ctx.fillRect(0, 0, VW, 120);
+
+      const screen = SCREENS[gameState.currentScreen];
+
+      // Jungle Canopy Steps
+      ctx.fillStyle = PALETTE.canopyDark;
+      ctx.fillRect(0, 40, VW, 60);
+      ctx.fillStyle = PALETTE.canopyLight;
+      ctx.fillRect(0, 60, VW, 30);
+
+      // Jungle Trunk Details
+      ctx.fillStyle = PALETTE.trunk;
+      for (let i = 40; i < VW; i += 160) {
+        ctx.fillRect(i, 90, 16, 140); 
+        ctx.fillStyle = PALETTE.canopyDark;
+        ctx.fillRect(i - 20, 80, 56, 15);
+      }
+
+      // Ground Surface
+      ctx.fillStyle = PALETTE.ground;
+      ctx.fillRect(0, 230, VW, 30);
+
+      // Pits
+      if (screen.hasPit && !harry.isUnderground) {
+        const pitLeft = VW / 2 - screen.pitWidth / 2;
+        
+        if (screen.pitType === 'water' || screen.pitType === 'tar') {
+          ctx.fillStyle = PALETTE.pit;
+          ctx.fillRect(pitLeft, 230, screen.pitWidth, 30);
+          
+          ctx.fillStyle = (screen.pitType === 'water') ? PALETTE.water : '#151515';
+          ctx.fillRect(pitLeft + 10, 235, screen.pitWidth - 20, 25);
+          
+          ctx.fillStyle = (screen.pitType === 'water') ? '#5599ff' : '#2e2e2e';
+          ctx.fillRect(pitLeft + 25, 245, 20, 3);
+          ctx.fillRect(pitLeft + 110, 250, 35, 3);
+        } else if (screen.pitType === 'hole') {
+          ctx.fillStyle = PALETTE.pit;
+          ctx.fillRect(pitLeft, 230, screen.pitWidth, 30);
+        }
+      }
+
+      // Ladders
+      if (screen.hasLadders) {
+        const lx = VW / 2 - 15;
+        ctx.fillStyle = PALETTE.ladder;
+        ctx.fillRect(lx, 150, 4, 180);
+        ctx.fillRect(lx + 26, 150, 4, 180);
+        for (let ry = 155; ry < 330; ry += 12) {
+          ctx.fillRect(lx, ry, 30, 4);
+        }
+      }
+
+      // Rope Swinging
+      if (screen.hasRope && !harry.isUnderground) {
+        rope.draw();
+      }
+
+      // Crocodiles
+      if (screen.type === 'crocodiles' && !harry.isUnderground) {
+        for (let croc of crocodiles) {
+          croc.draw();
+        }
+      }
+
+      // Logs
+      if (screen.hasLogs && !harry.isUnderground) {
+        for (let log of logs) {
+          log.draw();
+        }
+      }
+
+      // Fires (Wiggling dynamic height!)
+      if (screen.hasFire && !harry.isUnderground) {
+        const heightMod = Math.sin(Date.now() / 80) * 3;
+        ctx.fillStyle = '#ff3300';
+        ctx.fillRect(screen.fireX, 210 + heightMod, 20, 20 - heightMod);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillRect(screen.fireX + 4, 215 + heightMod, 12, 15 - heightMod);
+      }
+
+      // Snakes (Darting fork tongue!)
+      if (screen.hasSnake && !harry.isUnderground) {
+        ctx.fillStyle = '#ff00ff'; 
+        const wiggle = Math.sin(Date.now() / 150) * 4;
+        ctx.fillRect(screen.snakeX + wiggle, 212, 8, 18);
+        ctx.fillRect(screen.snakeX - 4 + wiggle, 218, 16, 4);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(screen.snakeX + 3 + wiggle, 214, 2, 2);
+        
+        // Juiced: Animated fork tongue flicking in/out
+        if (Math.floor(Date.now() / 250) % 2 === 0) {
+          ctx.fillStyle = '#ff0000';
+          ctx.fillRect(screen.snakeX + 10 + wiggle, 215, 4, 2);
+        }
+      }
+
+      // Subterranean Passage Layout
+      ctx.fillStyle = '#221100'; 
+      ctx.fillRect(0, 260, VW, 40);
+
+      ctx.fillStyle = PALETTE.tunnelBg;
+      ctx.fillRect(0, 300, VW, 100);
+
+      ctx.fillStyle = PALETTE.brick;
+      for (let bx = 0; bx < VW; bx += 80) {
+        ctx.fillRect(bx, 300, 76, 10);
+        ctx.fillRect(bx + 20, 320, 56, 10);
+      }
+
+      if (harry.isUnderground && screen.undergroundBlocked) {
+        const wallX = VW / 2 - 25;
+        ctx.fillStyle = '#777777';
+        ctx.fillRect(wallX, 300, 50, 80);
+        ctx.fillStyle = '#222';
+        ctx.fillRect(wallX, 320, 50, 4);
+        ctx.fillRect(wallX, 340, 50, 4);
+        ctx.fillRect(wallX, 360, 50, 4);
+      }
+
+      // Subterranean Scorpion (Tail stinging motion!)
+      if (harry.isUnderground && !screen.undergroundBlocked) {
+        ctx.fillStyle = '#ff3333';
+        const scorpX = this.scorpionX || 350;
+        const tailBob = Math.sin(Date.now() / 120) * 4;
+        
+        ctx.fillRect(scorpX + 12, 312 + tailBob, 6, 12 - tailBob);
+        ctx.fillRect(scorpX + 4, 320, 16, 8);
+        ctx.fillRect(scorpX, 324, 6, 6);
+      }
+
+      // Render Active Treasures
+      const hasCollectedThisScreen = gameState.collectedTreasures[gameState.currentScreen];
+      if (screen.hasTreasure && !hasCollectedThisScreen) {
+        const tx = screen.treasureX;
+        const ty = harry.isUnderground ? 315 : 215;
+
+        ctx.save();
+        ctx.translate(tx, ty);
+
+        // Juiced: Slow bobbing animation for treasures!
+        const bob = Math.sin(Date.now() / 200) * 3;
+        ctx.translate(0, bob);
+
+        if (screen.treasureType === 'gold') {
+          ctx.fillStyle = PALETTE.gold;
+          ctx.fillRect(0, 0, 20, 12);
+          ctx.fillStyle = '#b59300'; 
+          ctx.fillRect(0, 8, 20, 4);
+        } else if (screen.treasureType === 'silver') {
+          ctx.fillStyle = PALETTE.silver;
+          ctx.fillRect(0, 0, 20, 12);
+          ctx.fillStyle = '#777';
+          ctx.fillRect(0, 8, 20, 4);
+        } else if (screen.treasureType === 'ring') {
+          ctx.fillStyle = PALETTE.ring;
+          ctx.beginPath();
+          ctx.arc(10, 6, 8, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = '#ff00ff';
+          ctx.fillRect(8, 0, 4, 4); 
+        }
+
+        ctx.restore();
+      }
+
+      harry.draw();
+
+      // Render Active Particles System
+      for (let particle of particles) {
+        particle.draw();
+      }
+
+      // Render Active Floating Popups
+      for (let txt of floatingTexts) {
+        txt.draw();
+      }
+
+      ctx.restore();
+    }
+
+    // ==========================================
+    // 8. ENTITIES UPDATE TIMER LOOP
+    // ==========================================
+    let spawnTimer = 0;
+    function updateEntities() {
+      const screen = SCREENS[gameState.currentScreen];
+
+      if (screen.hasRope) {
+        rope.update();
+      }
+
+      if (screen.type === 'crocodiles') {
+        for (let croc of crocodiles) {
+          croc.update();
+        }
+      }
+
+      if (screen.hasLogs && !harry.isUnderground) {
+        spawnTimer++;
+        if (spawnTimer > screen.logSpawnDelay) {
+          logs.push(new Log(VW + 30, 2.8 + Math.random() * 1.5));
+          spawnTimer = 0;
+        }
+
+        for (let log of logs) {
+          log.update();
+        }
+        logs = logs.filter(log => log.x > -40);
+      }
+
+      harry.update();
+
+      // Update Juiced System Elements
+      for (let particle of particles) {
+        particle.update();
+      }
+      particles = particles.filter(p => p.life > 0);
+
+      for (let txt of floatingTexts) {
+        txt.update();
+      }
+      floatingTexts = floatingTexts.filter(t => t.life > 0);
+    }
+
+    // ==========================================
+    // 9. SYSTEM HUD & LOOP STATUS CONTROLLERS
+    // ==========================================
+    function getCollectedCount() {
+      return Object.keys(gameState.collectedTreasures).filter(k => gameState.collectedTreasures[k]).length;
+    }
+
+    function updateScoreBoard() {
+      document.getElementById('scoreVal').innerText = gameState.score;
+      document.getElementById('screenVal').innerText = gameState.currentScreen + 1;
+      
+      const collected = getCollectedCount();
+      document.getElementById('treasureProgress').innerText = `${collected} / ${TOTAL_TREASURES_COUNT}`;
+
+      const livesUI = Array(Math.max(0, gameState.lives)).fill('▲').join(' ');
+      document.getElementById('livesContainer').innerText = livesUI || 'GAME OVER';
+    }
+
+    function checkWinCondition() {
+      const collected = getCollectedCount();
+      if (collected >= TOTAL_TREASURES_COUNT) {
+        triggerEndState(true);
+      }
+    }
+
+    function getPerformanceRank(score) {
+      if (score >= 15000) return "Master Archeologist 🏆";
+      if (score >= 8000) return "Jungle Explorer 🧭";
+      if (score >= 3000) return "Treasure Hunter ⛏️";
+      return "Jungle Novice 🎒";
+    }
+
+    function triggerEndState(isVictory) {
+      gameState.active = false;
+      gameState.gameOver = !isVictory;
+      gameState.victory = isVictory;
+
+      if (gameState.score > gameState.highScore) {
+        gameState.highScore = gameState.score;
+      }
+
+      const overlay = document.getElementById('overlayScreen');
+      const title = document.getElementById('overlayTitle');
+      const subtitle = document.getElementById('overlaySubtitle');
+      const statsBox = document.getElementById('statsBox');
+      const startBtn = document.getElementById('startBtn');
+
+      overlay.classList.remove('hidden');
+      statsBox.classList.remove('hidden');
+
+      document.getElementById('finalScore').innerText = gameState.score;
+      document.getElementById('finalTreasures').innerText = `${getCollectedCount()} / ${TOTAL_TREASURES_COUNT}`;
+      
+      const m = Math.floor(gameState.timeLeft / 60).toString().padStart(2, '0');
+      const s = (gameState.timeLeft % 60).toString().padStart(2, '0');
+      document.getElementById('finalTime').innerText = `${m}:${s}`;
+      document.getElementById('highScoreVal').innerText = gameState.highScore;
+      
+      const rank = getPerformanceRank(gameState.score);
+      document.getElementById('rankLabel').innerText = `JUNGLE RANK: ${rank}`;
+
+      if (isVictory) {
+        title.innerText = "🏆 VICTORY! 🏆";
+        title.className = "text-xl md:text-3xl text-emerald-400 mb-2 animate-bounce font-bold";
+        subtitle.innerText = "Astounding! You have collected all 6 Legendary Treasures and conquered the deep jungle loops!";
+        startBtn.innerText = "PLAY AGAIN";
+        audio.victoryArpeggio();
+      } else {
+        title.innerText = "💀 DEFEAT! 💀";
+        title.className = "text-xl md:text-3xl text-red-500 mb-2 font-bold";
+        subtitle.innerText = "The pitfalls of the jungle have claimed you. Re-arm and venture forth again!";
+        startBtn.innerText = "RESTART EXPEDITION";
+        audio.death();
+      }
+    }
+
+    // Count-down clock
+    setInterval(() => {
+      if (!gameState.active || gameState.gameOver || gameState.freezeTimer) return;
+
+      gameState.timeLeft--;
+      if (gameState.timeLeft <= 0) {
+        gameState.timeLeft = 0;
+        triggerEndState(false);
+      }
+
+      const m = Math.floor(gameState.timeLeft / 60).toString().padStart(2, '0');
+      const s = (gameState.timeLeft % 60).toString().padStart(2, '0');
+      document.getElementById('timeVal').innerText = `${m}:${s}`;
+    }, 1000);
+
+    // ==========================================
+    // 10. SANDBOX & DEVELOPER HUB CONTROLS
+    // ==========================================
+    window.teleportToScreen = function(idx) {
+      if (idx < 0 || idx >= SCREENS.length) return;
+      gameState.currentScreen = idx;
+      
+      harry.x = 40;
+      harry.y = 230;
+      harry.isUnderground = false;
+      harry.isClimbing = false;
+      harry.isSwinging = false;
+      
+      if (idx === 5) {
+        harry.isUnderground = true;
+        harry.y = 330;
+      }
+
+      initScreen(idx);
+      updateScoreBoard();
+      audio.playTone(600, 800, 0.25, 'triangle', 0.1);
+    };
+
+    // CRT Toggle action
+    document.getElementById('crtToggle').addEventListener('change', (e) => {
+      const crtOver = document.getElementById('crtOverlay');
+      const crtVig = document.getElementById('crtVignette');
+      if (e.target.checked) {
+        crtOver.className = "crt-overlay crt-flicker";
+        crtVig.className = "crt-vignette";
+      } else {
+        crtOver.className = "hidden";
+        crtVig.className = "hidden";
+      }
+    });
+
+    document.getElementById('invincibilityToggle').addEventListener('change', (e) => {
+      gameState.godMode = e.target.checked;
+      audio.playTone(800, 1000, 0.1, 'sine', 0.05);
+    });
+
+    document.getElementById('infiniteTimeToggle').addEventListener('change', (e) => {
+      gameState.freezeTimer = e.target.checked;
+    });
+
+    document.getElementById('muteToggle').addEventListener('change', (e) => {
+      audio.muted = e.target.checked;
+    });
+
+    // Juicy test buttons
+    window.spawnJuiceParticles = function() {
+      // Trigger a confetti ring explosion in the middle
+      for (let angle = 0; angle < Math.PI * 2; angle += 0.2) {
+        const vel = 4 + Math.random() * 3;
+        particles.push(new Particle(
+          VW / 2, 
+          VH / 2, 
+          ['#ff00ff', '#00ffff', '#ffd700', '#ff3333'][Math.floor(Math.random() * 4)], 
+          Math.random() * 5 + 3, 
+          Math.cos(angle) * vel, 
+          Math.sin(angle) * vel, 
+          0.05, 
+          0.97
+        ));
+      }
+      addFloatingText(VW / 2 - 40, VH / 2 - 20, "BOOM!", "#ffd700");
+      audio.playTone(400, 1200, 0.25, 'square', 0.08);
+    };
+
+    window.triggerImpactShake = function() {
+      addShake(15, 25);
+      audio.playTone(120, 30, 0.3, 'sawtooth', 0.15);
+    };
+
+    window.triggerSpawnTreasure = function() {
+      const screen = SCREENS[gameState.currentScreen];
+      screen.hasTreasure = true;
+      screen.treasureType = ['gold', 'silver', 'ring'][Math.floor(Math.random() * 3)];
+      screen.treasureX = harry.x + 100;
+      gameState.collectedTreasures[gameState.currentScreen] = false;
+      audio.playTone(440, 880, 0.2, 'square', 0.1);
+    };
+
+    window.gainExtraLife = function() {
+      gameState.lives = Math.min(6, gameState.lives + 1);
+      updateScoreBoard();
+      audio.playTone(1000, 1500, 0.3, 'sine', 0.1);
+    };
+
+    window.instantWin = function() {
+      SCREENS.forEach((scr, idx) => {
+        if (scr.hasTreasure) {
+          gameState.collectedTreasures[idx] = true;
+        }
+      });
+      updateScoreBoard();
+      checkWinCondition();
+    };
+
+    // ==========================================
+    // 11. INPUT HANDLERS & TOUCH SUPPORT
+    // ==========================================
+    function handleKeyDown(e) {
+      if (!gameState.active) return;
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = true;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = true;
+      if (e.code === 'Space') {
+        keys.space = true;
+        e.preventDefault(); 
+      }
+    }
+
+    function handleKeyUp(e) {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = false;
+      if (e.code === 'Space') keys.space = false;
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    function bindTouchBtn(elementId, keyProp) {
+      const btn = document.getElementById(elementId);
+      if (!btn) return;
+
+      const press = (e) => {
+        e.preventDefault();
+        keys[keyProp] = true;
+      };
+      const release = (e) => {
+        e.preventDefault();
+        keys[keyProp] = false;
+      };
+
+      btn.addEventListener('touchstart', press);
+      btn.addEventListener('touchend', release);
+      btn.addEventListener('mousedown', press);
+      btn.addEventListener('mouseup', release);
+      btn.addEventListener('mouseleave', release);
+    }
+
+    bindTouchBtn('btnUp', 'up');
+    bindTouchBtn('btnDown', 'down');
+    bindTouchBtn('btnLeft', 'left');
+    bindTouchBtn('btnRight', 'right');
+    bindTouchBtn('btnJump', 'space');
+
+    // ==========================================
+    // 12. MASTER GAME LOOP
+    // ==========================================
+    function loop() {
+      if (gameState.active && !gameState.gameOver && !gameState.victory) {
+        ctx.clearRect(0, 0, VW, VH);
+        updateEntities();
+        checkCollisions();
+        drawWorld();
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // Start Screen / Restart Command
+    document.getElementById('startBtn').addEventListener('click', () => {
+      audio.init();
+
+      // Full reset of state values
+      gameState.score = 2000;
+      gameState.timeLeft = 1200; 
+      gameState.lives = 3;
+      gameState.gameOver = false;
+      gameState.victory = false;
+      gameState.currentScreen = 0;
+      gameState.collectedTreasures = {}; 
+      
+      harry.reset();
+      initScreen(0);
+      updateScoreBoard();
+
+      // Hide Menu Overlay & Stats
+      document.getElementById('overlayScreen').classList.add('hidden');
+      document.getElementById('statsBox').classList.add('hidden');
+      gameState.active = true;
+    });
+
+    window.onload = function() {
+      initScreen(0);
+      drawWorld();
+      loop();
+    };
+
+  </script>
+</body>
+</html>

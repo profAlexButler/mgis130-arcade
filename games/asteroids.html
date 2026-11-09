@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTEROIDS V1</title>
+<style>
+  :root {
+    --game-color: #46ff88;
+    --accent-color: #b8ffd4;
+    --chip-text: #d5e6dc;
+    --bg-a: #04140b;
+    --bg-b: #010604;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: radial-gradient(ellipse at center, var(--bg-a) 0%, var(--bg-b) 100%);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    color: var(--game-color);
+  }
+
+  canvas { display: block; cursor: crosshair; }
+
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 22px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    font-size: 13px;
+    letter-spacing: 2px;
+    font-weight: 600;
+    text-transform: uppercase;
+    pointer-events: none;
+    text-shadow: 0 0 6px var(--game-color);
+    opacity: 0.92;
+    z-index: 5;
+  }
+
+  #lives-icons { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }
+  #lives-icons svg { display: block; }
+
+  /* Active powerup indicators, under the score */
+  #powerup-status {
+    position: fixed;
+    top: 56px; left: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .pu-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 4px 12px 4px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: rgba(0, 0, 0, 0.35);
+    width: fit-content;
+    text-shadow: 0 0 6px currentColor;
+    box-shadow: 0 0 10px -4px currentColor inset, 0 0 8px -4px currentColor;
+  }
+  .pu-chip .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  #message {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    pointer-events: none;
+    text-shadow: 0 0 10px var(--game-color);
+    display: none;
+    z-index: 5;
+  }
+  #message.visible { display: block; }
+  #message .title { font-size: 40px; font-weight: 300; margin-bottom: 14px; }
+  #message .subtitle { font-size: 13px; letter-spacing: 3px; font-weight: 400; opacity: 0.6; }
+
+  /* Transient wave banner */
+  #wave-banner {
+    position: fixed;
+    top: 34%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 10px;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px var(--game-color);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 5;
+  }
+  #wave-banner.show { animation: wave-fade 2s ease forwards; }
+  @keyframes wave-fade {
+    0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    18% { opacity: 0.95; transform: translateX(-50%) translateY(0); }
+    75% { opacity: 0.95; }
+    100% { opacity: 0; }
+  }
+
+  #instructions {
+    position: fixed;
+    bottom: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ============ Aesthetic chips (left edge) ============ */
+  #style-dock {
+    position: fixed;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 20;
+  }
+  #style-dock .dock-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--chip-text);
+    opacity: 0.5;
+    padding-left: 12px;
+    margin-bottom: 2px;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 16px 7px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--chip-text);
+    font-size: 10px;
+    letter-spacing: 2.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s, opacity 0.2s;
+    opacity: 0.75;
+  }
+  .chip:hover { opacity: 1; background: rgba(255, 255, 255, 0.09); }
+  .chip .swatch {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--swatch, #fff);
+    box-shadow: 0 0 7px var(--swatch, #fff);
+    flex: none;
+  }
+  .chip.active {
+    opacity: 1;
+    border-color: var(--swatch, #fff);
+    box-shadow: 0 0 14px -6px var(--swatch, #fff);
+  }
+  .chip.toggle .swatch { border-radius: 2px; }
+  .chip.toggle:not(.active) .swatch { background: transparent; box-shadow: none; border: 1px solid var(--chip-text); }
+  #style-dock .divider {
+    height: 1px;
+    margin: 6px 12px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Vignette, always on */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.5) 100%);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* CRT scanlines, chip-toggled */
+  #crt {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 11;
+    display: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 2px,
+      rgba(0, 0, 0, 0.22) 3px, rgba(0, 0, 0, 0.22) 4px
+    );
+  }
+  body.crt-on #crt { display: block; }
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;left:10px;bottom:10px;z-index:9999;font:14px Arial,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px;text-decoration:none;">&larr; Back to the arcade</a>
+
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="lives">Lives: <span id="lives-icons"></span></div>
+  </div>
+
+  <div id="powerup-status"></div>
+
+  <div id="message">
+    <div class="title" id="message-title">GAME OVER</div>
+    <div class="subtitle" id="message-subtitle">Press R to restart</div>
+  </div>
+
+  <div id="wave-banner"></div>
+
+  <div id="style-dock">
+    <div class="dock-label">Style</div>
+    <div class="chip theme-chip active" data-theme="classic" style="--swatch:#46ff88"><span class="swatch"></span>Classic</div>
+    <div class="chip theme-chip" data-theme="amber" style="--swatch:#ffb347"><span class="swatch"></span>Amber</div>
+    <div class="chip theme-chip" data-theme="modern" style="--swatch:#7ad7ff"><span class="swatch"></span>Modern</div>
+    <div class="chip theme-chip" data-theme="vaporwave" style="--swatch:#ff5ec4"><span class="swatch"></span>Vaporwave</div>
+    <div class="divider"></div>
+    <div class="chip toggle" id="crt-chip" style="--swatch:#ffffff"><span class="swatch"></span>CRT</div>
+  </div>
+
+  <div id="vignette"></div>
+  <div id="crt"></div>
+
+  <div id="instructions">
+    Rotate: &larr; &rarr; / A D &nbsp;|&nbsp; Thrust: &uarr; / W &nbsp;|&nbsp; Fire: Space
+  </div>
+
+<script>
+// ====================================================================
+// CONSTANTS
+// ====================================================================
+const SHIP_ROTATE_SPEED = 0.09;
+const SHIP_THRUST = 0.12;
+const SHIP_FRICTION = 0.992;
+const SHIP_RADIUS = 12;
+const SHIP_INVULNERABILITY = 150;
+
+const BULLET_SPEED = 8;
+const BULLET_LIFETIME = 55;
+const BULLET_COOLDOWN = 10;
+const RAPID_COOLDOWN = 4;
+const TRIPLE_SPREAD = 0.18;
+
+const ASTEROID_SPEED_MIN = 0.4;
+const ASTEROID_SPEED_MAX = 1.6;
+const ASTEROID_VERTICES = 12;
+const ASTEROID_SIZES = {
+  LARGE:  { radius: 44, score: 20,  next: 'MEDIUM' },
+  MEDIUM: { radius: 26, score: 50,  next: 'SMALL' },
+  SMALL:  { radius: 14, score: 100, next: null }
+};
+
+const STARTING_ASTEROIDS = 4;
+
+const POWERUP_CHANCE = 0.16;        // chance a broken asteroid drops one
+const POWERUP_LIFETIME = 620;       // frames before an uncollected drop fades
+const POWERUP_DURATION = 480;       // frames a timed powerup lasts (~8s)
+const POWERUP_RADIUS = 13;
+const POWERUP_TYPES = {
+  SHIELD: { color: '#5ee0ff', label: 'Shield' },
+  TRIPLE: { color: '#ff5ec4', label: 'Triple shot' },
+  RAPID:  { color: '#ffd75e', label: 'Rapid fire' }
+};
+
+const STAR_COUNT = 90;
+
+// ====================================================================
+// THEMES — one palette drives both the canvas and the page chrome
+// ====================================================================
+const THEMES = {
+  classic: {
+    hull: '#46ff88', rock: '#2fbf6b', bullet: '#c8ffe0',
+    flameOuter: '#ff7a2f', flameInner: '#ffd75e', flameCore: '#fff7e0',
+    star: '#9fdcb8', fade: 'rgba(2, 10, 6, 0.35)',
+    accent: '#b8ffd4', chipText: '#d5e6dc', bgA: '#04140b', bgB: '#010604'
+  },
+  amber: {
+    hull: '#ffb347', rock: '#c98a3d', bullet: '#ffe6bf',
+    flameOuter: '#ff5a2f', flameInner: '#ffcf5e', flameCore: '#fff3d6',
+    star: '#e0b98a', fade: 'rgba(16, 9, 2, 0.35)',
+    accent: '#ffd9a0', chipText: '#e8d9c4', bgA: '#1a0f03', bgB: '#070301'
+  },
+  modern: {
+    hull: '#7ad7ff', rock: '#8fa3b8', bullet: '#e6f7ff',
+    flameOuter: '#ff8a3d', flameInner: '#ffd75e', flameCore: '#ffffff',
+    star: '#a8c5e0', fade: 'rgba(5, 10, 20, 0.35)',
+    accent: '#c9ecff', chipText: '#d7e3ee', bgA: '#0a1424', bgB: '#050810'
+  },
+  vaporwave: {
+    hull: '#ff5ec4', rock: '#9d7bff', bullet: '#5ee0ff',
+    flameOuter: '#ff9e5e', flameInner: '#5ee0ff', flameCore: '#ffffff',
+    star: '#d9a8ff', fade: 'rgba(26, 5, 42, 0.35)',
+    accent: '#5ee0ff', chipText: '#ecd7f5', bgA: '#2d0a4a', bgB: '#12031f'
+  }
+};
+let palette = THEMES.classic;
+
+function applyTheme(name) {
+  palette = THEMES[name];
+  const root = document.documentElement.style;
+  root.setProperty('--game-color', palette.hull);
+  root.setProperty('--accent-color', palette.accent);
+  root.setProperty('--chip-text', palette.chipText);
+  root.setProperty('--bg-a', palette.bgA);
+  root.setProperty('--bg-b', palette.bgB);
+  document.querySelectorAll('.theme-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.theme === name));
+  makeStars();
+  updateHud();
+}
+
+document.querySelectorAll('.theme-chip').forEach(chip => {
+  chip.addEventListener('mousedown', e => e.preventDefault());
+  chip.addEventListener('click', () => applyTheme(chip.dataset.theme));
+});
+const crtChip = document.getElementById('crt-chip');
+crtChip.addEventListener('mousedown', e => e.preventDefault());
+crtChip.addEventListener('click', () => {
+  document.body.classList.toggle('crt-on');
+  crtChip.classList.toggle('active');
+});
+
+// ====================================================================
+// CANVAS SETUP
+// ====================================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  makeStars();
+}
+
+// ====================================================================
+// STARFIELD
+// ====================================================================
+let stars = [];
+function makeStars() {
+  stars = [];
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: 0.4 + Math.random() * 1.2,
+      drift: 0.02 + Math.random() * 0.06,
+      twinkle: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+// ====================================================================
+// GAME STATE
+// ====================================================================
+let ship, bullets, asteroids, powerups, particles, score, lives, wave, gameOver, fireCooldown;
+const keys = {};
+
+function initGame() {
+  ship = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    angle: -Math.PI / 2,
+    vx: 0,
+    vy: 0,
+    thrusting: false,
+    invulnerable: SHIP_INVULNERABILITY,
+    shield: false,
+    triple: 0,
+    rapid: 0
+  };
+  bullets = [];
+  asteroids = [];
+  powerups = [];
+  particles = [];
+  score = 0;
+  lives = 3;
+  wave = 1;
+  gameOver = false;
+  fireCooldown = 0;
+  spawnWave();
+  updateHud();
+  hideMessage();
+}
+
+function spawnWave() {
+  const count = STARTING_ASTEROIDS + (wave - 1);
+  for (let i = 0; i < count; i++) {
+    spawnAsteroid('LARGE');
+  }
+  if (wave > 1) showWaveBanner('Wave ' + wave);
+}
+
+function spawnAsteroid(size, x, y) {
+  if (x === undefined) {
+    // Spawn on a random edge, away from the ship
+    const side = Math.floor(Math.random() * 4);
+    if (side === 0) { x = 0; y = Math.random() * canvas.height; }
+    else if (side === 1) { x = canvas.width; y = Math.random() * canvas.height; }
+    else if (side === 2) { x = Math.random() * canvas.width; y = 0; }
+    else { x = Math.random() * canvas.width; y = canvas.height; }
+  }
+  const angle = Math.random() * Math.PI * 2;
+  const speed = ASTEROID_SPEED_MIN + Math.random() * (ASTEROID_SPEED_MAX - ASTEROID_SPEED_MIN);
+  const shape = [];
+  for (let i = 0; i < ASTEROID_VERTICES; i++) {
+    shape.push(0.55 + Math.random() * 0.45);
+  }
+  asteroids.push({
+    x, y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    angle: Math.random() * Math.PI * 2,
+    rotation: (Math.random() - 0.5) * 0.025,
+    size,
+    radius: ASTEROID_SIZES[size].radius,
+    shape
+  });
+}
+
+function spawnPowerup(x, y) {
+  const types = Object.keys(POWERUP_TYPES);
+  const type = types[Math.floor(Math.random() * types.length)];
+  const angle = Math.random() * Math.PI * 2;
+  powerups.push({
+    x, y,
+    vx: Math.cos(angle) * 0.35,
+    vy: Math.sin(angle) * 0.35,
+    type,
+    life: POWERUP_LIFETIME,
+    pulse: Math.random() * Math.PI * 2
+  });
+}
+
+// ====================================================================
+// PARTICLES — exhaust sparks and explosion debris
+// ====================================================================
+function spawnParticles(x, y, color, count, speedMax, lifeBase) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.4 + Math.random() * speedMax;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: lifeBase + Math.random() * lifeBase * 0.6,
+      maxLife: lifeBase * 1.6,
+      color
+    });
+  }
+}
+
+function spawnExhaust() {
+  // A spark or two shot backwards out of the nozzle
+  if (Math.random() > 0.55) return;
+  const backAngle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5;
+  const speed = 1.2 + Math.random() * 1.4;
+  particles.push({
+    x: ship.x - Math.cos(ship.angle) * SHIP_RADIUS * 0.7,
+    y: ship.y - Math.sin(ship.angle) * SHIP_RADIUS * 0.7,
+    vx: Math.cos(backAngle) * speed + ship.vx,
+    vy: Math.sin(backAngle) * speed + ship.vy,
+    life: 14 + Math.random() * 10,
+    maxLife: 24,
+    color: Math.random() > 0.4 ? palette.flameOuter : palette.flameInner
+  });
+}
+
+// ====================================================================
+// INPUT
+// ====================================================================
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+    e.preventDefault();
+  }
+  if (gameOver && e.code === 'KeyR') {
+    initGame();
+  }
+});
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+});
+
+// ====================================================================
+// UPDATE
+// ====================================================================
+function update() {
+  // Starfield drifts even on the game-over screen
+  for (const s of stars) {
+    s.y += s.drift;
+    s.twinkle += 0.03;
+    if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+  }
+
+  // Particles keep burning out after game over too
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.97;
+    p.vy *= 0.97;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  if (gameOver) return;
+
+  // Ship rotation
+  if (keys['ArrowLeft'] || keys['KeyA']) ship.angle -= SHIP_ROTATE_SPEED;
+  if (keys['ArrowRight'] || keys['KeyD']) ship.angle += SHIP_ROTATE_SPEED;
+
+  // Ship thrust
+  ship.thrusting = !!(keys['ArrowUp'] || keys['KeyW']);
+  if (ship.thrusting) {
+    ship.vx += Math.cos(ship.angle) * SHIP_THRUST;
+    ship.vy += Math.sin(ship.angle) * SHIP_THRUST;
+    spawnExhaust();
+  }
+
+  // Friction and motion
+  ship.vx *= SHIP_FRICTION;
+  ship.vy *= SHIP_FRICTION;
+  ship.x += ship.vx;
+  ship.y += ship.vy;
+  wrap(ship);
+
+  // Timers
+  if (ship.invulnerable > 0) ship.invulnerable--;
+  if (ship.triple > 0) ship.triple--;
+  if (ship.rapid > 0) ship.rapid--;
+
+  // Firing
+  if (fireCooldown > 0) fireCooldown--;
+  if (keys['Space'] && fireCooldown === 0) {
+    const spreads = ship.triple > 0 ? [-TRIPLE_SPREAD, 0, TRIPLE_SPREAD] : [0];
+    for (const spread of spreads) {
+      const a = ship.angle + spread;
+      bullets.push({
+        x: ship.x + Math.cos(a) * SHIP_RADIUS,
+        y: ship.y + Math.sin(a) * SHIP_RADIUS,
+        vx: Math.cos(a) * BULLET_SPEED + ship.vx,
+        vy: Math.sin(a) * BULLET_SPEED + ship.vy,
+        life: BULLET_LIFETIME
+      });
+    }
+    fireCooldown = ship.rapid > 0 ? RAPID_COOLDOWN : BULLET_COOLDOWN;
+  }
+
+  // Bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx;
+    b.y += b.vy;
+    b.life--;
+    wrap(b);
+    if (b.life <= 0) bullets.splice(i, 1);
+  }
+
+  // Asteroids
+  for (const a of asteroids) {
+    a.x += a.vx;
+    a.y += a.vy;
+    a.angle += a.rotation;
+    wrap(a);
+  }
+
+  // Powerup drops
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.pulse += 0.08;
+    p.life--;
+    wrap(p);
+    if (p.life <= 0) { powerups.splice(i, 1); continue; }
+    if (distance(ship, p) < POWERUP_RADIUS + SHIP_RADIUS) {
+      collectPowerup(p.type);
+      spawnParticles(p.x, p.y, POWERUP_TYPES[p.type].color, 10, 2.2, 22);
+      powerups.splice(i, 1);
+    }
+  }
+
+  // Collisions: bullets vs asteroids
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    for (let j = asteroids.length - 1; j >= 0; j--) {
+      const a = asteroids[j];
+      if (distance(b, a) < a.radius) {
+        bullets.splice(i, 1);
+        score += ASTEROID_SIZES[a.size].score;
+        breakAsteroid(j);
+        updateHud();
+        break;
+      }
+    }
+  }
+
+  // Collisions: ship vs asteroids
+  if (ship.invulnerable === 0) {
+    for (const a of asteroids) {
+      if (distance(ship, a) < a.radius + SHIP_RADIUS) {
+        if (ship.shield) {
+          // The shield takes the hit
+          ship.shield = false;
+          ship.invulnerable = 60;
+          spawnParticles(ship.x, ship.y, POWERUP_TYPES.SHIELD.color, 16, 2.6, 26);
+          updateHud();
+          break;
+        }
+        lives--;
+        spawnParticles(ship.x, ship.y, palette.hull, 22, 3, 30);
+        updateHud();
+        if (lives <= 0) {
+          gameOver = true;
+          showMessage('GAME OVER', 'Press R to restart');
+        } else {
+          ship.x = canvas.width / 2;
+          ship.y = canvas.height / 2;
+          ship.vx = 0;
+          ship.vy = 0;
+          ship.invulnerable = SHIP_INVULNERABILITY;
+        }
+        break;
+      }
+    }
+  }
+
+  // Next wave
+  if (asteroids.length === 0) {
+    wave++;
+    spawnWave();
+  }
+}
+
+function collectPowerup(type) {
+  if (type === 'SHIELD') ship.shield = true;
+  if (type === 'TRIPLE') ship.triple = POWERUP_DURATION;
+  if (type === 'RAPID') ship.rapid = POWERUP_DURATION;
+  updateHud();
+}
+
+function breakAsteroid(idx) {
+  const a = asteroids[idx];
+  asteroids.splice(idx, 1);
+  spawnParticles(a.x, a.y, palette.rock, a.size === 'LARGE' ? 14 : 8, 2.4, 24);
+  spawnParticles(a.x, a.y, palette.bullet, 3, 1.6, 16);
+  const next = ASTEROID_SIZES[a.size].next;
+  if (next) {
+    spawnAsteroid(next, a.x, a.y);
+    spawnAsteroid(next, a.x, a.y);
+  } else if (Math.random() < POWERUP_CHANCE) {
+    spawnPowerup(a.x, a.y);
+  }
+}
+
+function wrap(obj) {
+  if (obj.x < 0) obj.x += canvas.width;
+  if (obj.x > canvas.width) obj.x -= canvas.width;
+  if (obj.y < 0) obj.y += canvas.height;
+  if (obj.y > canvas.height) obj.y -= canvas.height;
+}
+
+function distance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ====================================================================
+// DRAW
+// ====================================================================
+function draw() {
+  // Trail effect — soft fade toward the theme's base tone
+  ctx.fillStyle = palette.fade;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawStars();
+
+  ctx.lineWidth = 1.5;
+
+  drawAsteroids();
+  drawPowerups();
+  drawParticles();
+  drawBullets();
+  drawShip();
+
+  ctx.shadowBlur = 0;
+}
+
+function drawStars() {
+  ctx.save();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = palette.star;
+  for (const s of stars) {
+    ctx.globalAlpha = 0.25 + 0.3 * Math.abs(Math.sin(s.twinkle));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawShip() {
+  if (gameOver) return;
+  // Flicker when invulnerable
+  const flickering = ship.invulnerable > 0 && Math.floor(ship.invulnerable / 5) % 2 === 0;
+
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+
+  // Shield ring sits outside the flicker so you can always see you have it
+  if (ship.shield) {
+    ctx.strokeStyle = POWERUP_TYPES.SHIELD.color;
+    ctx.shadowColor = POWERUP_TYPES.SHIELD.color;
+    ctx.shadowBlur = 10;
+    ctx.globalAlpha = 0.55 + 0.25 * Math.sin(Date.now() / 180);
+    ctx.beginPath();
+    ctx.arc(0, 0, SHIP_RADIUS + 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.rotate(ship.angle);
+
+  // Rocket flame — layered: outer plume, inner tongue, white-hot core
+  if (ship.thrusting && !flickering && Math.random() > 0.15) {
+    const flick = 1 + Math.random() * 0.5;
+    ctx.lineJoin = 'round';
+
+    ctx.strokeStyle = palette.flameOuter;
+    ctx.fillStyle = palette.flameOuter;
+    ctx.shadowColor = palette.flameOuter;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(-SHIP_RADIUS * 0.5, -SHIP_RADIUS * 0.42);
+    ctx.lineTo(-SHIP_RADIUS * (1.7 * flick), 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.5, SHIP_RADIUS * 0.42);
+    ctx.closePath();
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+
+    ctx.fillStyle = palette.flameInner;
+    ctx.shadowColor = palette.flameInner;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(-SHIP_RADIUS * 0.5, -SHIP_RADIUS * 0.24);
+    ctx.lineTo(-SHIP_RADIUS * (1.15 * flick), 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.5, SHIP_RADIUS * 0.24);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = palette.flameCore;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(-SHIP_RADIUS * 0.5, -SHIP_RADIUS * 0.1);
+    ctx.lineTo(-SHIP_RADIUS * 0.78, 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.5, SHIP_RADIUS * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Hull
+  if (!flickering) {
+    ctx.strokeStyle = palette.hull;
+    ctx.shadowColor = palette.hull;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(SHIP_RADIUS, 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.9, -SHIP_RADIUS * 0.75);
+    ctx.lineTo(-SHIP_RADIUS * 0.5, 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.9, SHIP_RADIUS * 0.75);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Cockpit accent — a second color on the ship itself
+    ctx.strokeStyle = palette.accent;
+    ctx.shadowColor = palette.accent;
+    ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.moveTo(SHIP_RADIUS * 0.35, 0);
+    ctx.lineTo(-SHIP_RADIUS * 0.15, -SHIP_RADIUS * 0.3);
+    ctx.lineTo(-SHIP_RADIUS * 0.15, SHIP_RADIUS * 0.3);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawBullets() {
+  ctx.fillStyle = palette.bullet;
+  ctx.shadowColor = palette.bullet;
+  ctx.shadowBlur = 8;
+  for (const b of bullets) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAsteroids() {
+  ctx.strokeStyle = palette.rock;
+  ctx.shadowColor = palette.rock;
+  ctx.shadowBlur = 8;
+  for (const a of asteroids) {
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(a.angle);
+    ctx.beginPath();
+    for (let i = 0; i < a.shape.length; i++) {
+      const angle = (i / a.shape.length) * Math.PI * 2;
+      const r = a.radius * a.shape[i];
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawPowerups() {
+  for (const p of powerups) {
+    // Blink for the last ~2 seconds before despawning
+    if (p.life < 120 && Math.floor(p.life / 8) % 2 === 0) continue;
+    const c = POWERUP_TYPES[p.type].color;
+    const pulse = 1 + 0.12 * Math.sin(p.pulse);
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.strokeStyle = c;
+    ctx.fillStyle = c;
+    ctx.shadowColor = c;
+    ctx.shadowBlur = 12;
+
+    // Hexagon container
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const r = POWERUP_RADIUS * pulse;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Glyph
+    if (p.type === 'SHIELD') {
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.type === 'TRIPLE') {
+      for (const dx of [-4, 0, 4]) {
+        ctx.beginPath();
+        ctx.arc(dx, dx === 0 ? -2 : 2, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (p.type === 'RAPID') {
+      for (const dy of [-1, 4]) {
+        ctx.beginPath();
+        ctx.moveTo(-4, dy);
+        ctx.lineTo(0, dy - 4);
+        ctx.lineTo(4, dy);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  ctx.save();
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ====================================================================
+// HUD
+// ====================================================================
+const scoreEl = document.getElementById('score');
+const livesIconsEl = document.getElementById('lives-icons');
+const messageEl = document.getElementById('message');
+const messageTitleEl = document.getElementById('message-title');
+const messageSubtitleEl = document.getElementById('message-subtitle');
+const powerupStatusEl = document.getElementById('powerup-status');
+const waveBannerEl = document.getElementById('wave-banner');
+
+function updateHud() {
+  scoreEl.textContent = 'Score: ' + score.toString().padStart(5, '0');
+  livesIconsEl.innerHTML = '';
+  for (let i = 0; i < lives; i++) {
+    const svg = `<svg width="14" height="18" viewBox="-12 -10 24 20" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="12,0 -11,-9 -6,0 -11,9" fill="none" stroke="${palette.hull}" stroke-width="1.5"
+               transform="rotate(-90)" style="filter: drop-shadow(0 0 4px ${palette.hull})"/>
+    </svg>`;
+    livesIconsEl.insertAdjacentHTML('beforeend', svg);
+  }
+}
+
+function updatePowerupStatus() {
+  const active = [];
+  if (ship.shield) active.push({ label: POWERUP_TYPES.SHIELD.label, color: POWERUP_TYPES.SHIELD.color, time: null });
+  if (ship.triple > 0) active.push({ label: POWERUP_TYPES.TRIPLE.label, color: POWERUP_TYPES.TRIPLE.color, time: Math.ceil(ship.triple / 60) });
+  if (ship.rapid > 0) active.push({ label: POWERUP_TYPES.RAPID.label, color: POWERUP_TYPES.RAPID.color, time: Math.ceil(ship.rapid / 60) });
+
+  powerupStatusEl.innerHTML = active.map(a =>
+    `<div class="pu-chip" style="color:${a.color}"><span class="dot"></span>${a.label}${a.time !== null ? ' · ' + a.time + 's' : ''}</div>`
+  ).join('');
+}
+
+function showWaveBanner(text) {
+  waveBannerEl.textContent = text;
+  waveBannerEl.classList.remove('show');
+  void waveBannerEl.offsetWidth; // restart the CSS animation
+  waveBannerEl.classList.add('show');
+}
+
+function showMessage(title, subtitle) {
+  messageTitleEl.textContent = title;
+  messageSubtitleEl.textContent = subtitle;
+  messageEl.classList.add('visible');
+}
+
+function hideMessage() {
+  messageEl.classList.remove('visible');
+}
+
+// ====================================================================
+// MAIN LOOP
+// ====================================================================
+function loop() {
+  update();
+  draw();
+  updatePowerupStatus();
+  requestAnimationFrame(loop);
+}
+
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+initGame();
+loop();
+</script>
+</body>
+</html>

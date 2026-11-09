@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taco Catch</title>
+  <style>
+    body { margin: 0; background: #12101f; color: #f2f0ff; font-family: "Courier New", monospace; text-align: center; }
+    h1 { color: #ff5fd2; margin: 16px 0 4px; }
+    #hud { margin-bottom: 8px; }
+    canvas { background: #1e1a33; border: 2px solid #4de8ff; border-radius: 8px; max-width: 95vw; }
+    .back { position: fixed; left: 10px; bottom: 10px; color: #fff; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; text-decoration: none; font: 14px Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Back to the arcade</a>
+  <h1>TACO CATCH</h1>
+  <div id="hud">Score: <span id="score">0</span> &nbsp; Misses left: <span id="lives">3</span></div>
+  <canvas id="game" width="480" height="600"></canvas>
+  <p>Left and right arrows, or move the mouse. Press space to start.</p>
+
+  <script>
+    // ----- Setup -----
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const TACO = "\u{1F32E}";
+
+    let plate, tacos, score, lives, running, spawnTimer, speed;
+
+    function reset() {
+      plate = { x: canvas.width / 2 - 45, y: canvas.height - 30, w: 90, h: 14 };
+      tacos = [];
+      score = 0;
+      lives = 3;
+      speed = 2;
+      spawnTimer = 0;
+      updateHud();
+    }
+
+    function updateHud() {
+      document.getElementById("score").textContent = score;
+      document.getElementById("lives").textContent = lives;
+    }
+
+    // ----- Controls -----
+    const keys = {};
+    document.addEventListener("keydown", function (e) {
+      keys[e.key] = true;
+      if (e.key === " " && !running) { reset(); running = true; }
+      if (e.key === " ") e.preventDefault();
+    });
+    document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+    canvas.addEventListener("mousemove", function (e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      plate.x = x - plate.w / 2;
+    });
+    canvas.addEventListener("click", function () { if (!running) { reset(); running = true; } });
+
+    // ----- Game rules -----
+    function update() {
+      if (keys["ArrowLeft"]) plate.x -= 7;
+      if (keys["ArrowRight"]) plate.x += 7;
+      plate.x = Math.max(0, Math.min(canvas.width - plate.w, plate.x));
+
+      spawnTimer--;
+      if (spawnTimer <= 0) {
+        tacos.push({ x: 20 + Math.random() * (canvas.width - 40), y: -20 });
+        spawnTimer = Math.max(25, 70 - score);
+      }
+
+      tacos.forEach(function (t) { t.y += speed; });
+
+      tacos = tacos.filter(function (t) {
+        const caught = t.y > plate.y - 10 && t.y < plate.y + plate.h && t.x > plate.x && t.x < plate.x + plate.w;
+        if (caught) { score++; speed = 2 + score * 0.08; updateHud(); return false; }
+        if (t.y > canvas.height + 20) { lives--; updateHud(); return false; }
+        return true;
+      });
+
+      if (lives <= 0) running = false;
+    }
+
+    // ----- Drawing -----
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#4de8ff";
+      ctx.fillRect(plate.x, plate.y, plate.w, plate.h);
+
+      ctx.font = "32px serif";
+      ctx.textAlign = "center";
+      tacos.forEach(function (t) { ctx.fillText(TACO, t.x, t.y); });
+
+      if (!running) {
+        ctx.fillStyle = "#ff5fd2";
+        ctx.font = "28px Courier New";
+        ctx.fillText(lives <= 0 ? "GAME OVER - " + score : "TACO CATCH", canvas.width / 2, canvas.height / 2 - 10);
+        ctx.fillStyle = "#f2f0ff";
+        ctx.font = "18px Courier New";
+        ctx.fillText("Press space or click to play", canvas.width / 2, canvas.height / 2 + 24);
+      }
+    }
+
+    function loop() {
+      if (running) update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    reset();
+    running = false;
+    loop();
+  </script>
+</body>
+</html>
