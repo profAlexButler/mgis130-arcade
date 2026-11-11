@@ -4,6 +4,12 @@
 
 const GAMES = [
   {
+    title: "Beer Pong",
+    file: "games/beer-pong.html",
+    description: "Campus bar tournament! Aim your trajectory and power to sink ping pong balls into red cups.",
+    controls: "Space to lock aim angle, Space again to set power"
+  },
+  {
     title: "Taco Catch",
     file: "games/taco-catch.html",
     description: "Tacos are falling off the truck. Catch them before they hit the ground.",

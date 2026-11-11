@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beer Pong - The Arcade</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #12101f;
+      color: #4de8ff;
+      font-family: "Courier New", monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    header {
+      width: 100%;
+      max-width: 800px;
+      margin-bottom: 15px;
+    }
+    a.back-link {
+      color: #ff5fd2;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    a.back-link:hover {
+      text-decoration: underline;
+    }
+    h1 {
+      color: #ff5fd2;
+      font-size: 2rem;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    p.sub {
+      color: #ffffff;
+      font-size: 0.9rem;
+      margin-bottom: 15px;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      background-color: #0d0b18;
+      border: 3px solid #ff5fd2;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(255, 95, 210, 0.3);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #12101f;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: #181528;
+      border-top: 2px solid #ff5fd2;
+      color: #ffffff;
+      font-size: 0.95rem;
+    }
+    .hud span {
+      color: #4de8ff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../index.html" class="back-link">&larr; Back to the arcade</a>
+    <h1>Beer Pong</h1>
+    <p class="sub">Campus Bar Championship Edition</p>
+  </header>
+
+  <div id="game-container">
+    <canvas id="pongCanvas" width="800" height="600"></canvas>
+    <div class="hud">
+      <div>CUPS: <span id="cups-val">10</span></div>
+      <div>SHOTS: <span id="shots-val">0</span></div>
+      <div>STATUS: <span id="status-val">PRESS SPACE TO START</span></div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('pongCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const cupsVal = document.getElementById('cups-val');
+    const shotsVal = document.getElementById('shots-val');
+    const statusVal = document.getElementById('status-val');
+
+    // Game States
+    const STATE_START = 0;
+    const STATE_AIMING = 1;
+    const STATE_POWERING = 2;
+    const STATE_THROWN = 3;
+    const STATE_RESULT = 4;
+    const STATE_GAMEOVER = 5;
+
+    let state = STATE_START;
+
+    let cups = [];
+    let shotsTaken = 0;
+    let aimAngle = 0; // Radians (-0.65 to 0.65)
+    let aimSpeed = 0.025;
+    let power = 0; // 0 to 1
+    let powerSpeed = 0.03;
+    let powerDir = 1;
+
+    let ball = {
+      startX: 400,
+      startY: 530,
+      x: 400,
+      y: 530,
+      targetX: 400,
+      targetY: 200,
+      z: 0,
+      frame: 0,
+      maxFrames: 40
+    };
+
+    let bannerMsg = "PRESS SPACE TO START";
+    let subBannerMsg = "AIM -> POWER -> SINK IT";
+    let resultTimer = 0;
+
+    function initCups() {
+      cups = [];
+      const rows = [
+        { count: 4, y: 130 },
+        { count: 3, y: 165 },
+        { count: 2, y: 200 },
+        { count: 1, y: 235 }
+      ];
+      const spacing = 38;
+
+      rows.forEach(row => {
+        const startX = 400 - ((row.count - 1) * spacing) / 2;
+        for (let i = 0; i < row.count; i++) {
+          cups.push({
+            x: startX + i * spacing,
+            y: row.y,
+            radius: 16,
+            active: true
+          });
+        }
+      });
+    }
+
+    function resetGame() {
+      initCups();
+      shotsTaken = 0;
+      aimAngle = 0;
+      power = 0;
+      powerDir = 1;
+      state = STATE_START;
+      bannerMsg = "PRESS SPACE TO AIM";
+      subBannerMsg = "TIMING IS EVERYTHING";
+      updateHUD();
+    }
+
+    function updateHUD() {
+      const activeCups = cups.filter(c => c.active).length;
+      cupsVal.textContent = activeCups;
+      shotsVal.textContent = shotsTaken;
+
+      if (state === STATE_START) statusVal.textContent = "PRESS SPACE TO AIM";
+      else if (state === STATE_AIMING) statusVal.textContent = "SPACE TO LOCK AIM";
+      else if (state === STATE_POWERING) statusVal.textContent = "SPACE TO LOCK POWER";
+      else if (state === STATE_THROWN) statusVal.textContent = "BALL IN THE AIR...";
+      else if (state === STATE_RESULT) statusVal.textContent = bannerMsg;
+      else if (state === STATE_GAMEOVER) statusVal.textContent = "TABLE CLEARED!";
+    }
+
+    function update() {
+      if (state === STATE_AIMING) {
+        aimAngle += aimSpeed;
+        if (aimAngle > 0.65 || aimAngle < -0.65) {
+          aimSpeed = -aimSpeed;
+        }
+      } else if (state === STATE_POWERING) {
+        power += powerSpeed * powerDir;
+        if (power >= 1) {
+          power = 1;
+          powerDir = -1;
+        } else if (power <= 0) {
+          power = 0;
+          powerDir = 1;
+        }
+      } else if (state === STATE_THROWN) {
+        ball.frame++;
+        const t = ball.frame / ball.maxFrames;
+        ball.x = ball.startX + (ball.targetX - ball.startX) * t;
+        ball.y = ball.startY + (ball.targetY - ball.startY) * t;
+        // Parabolic arc for ball height (z)
+        ball.z = Math.sin(t * Math.PI) * 130;
+
+        if (ball.frame >= ball.maxFrames) {
+          checkLand();
+        }
+      } else if (state === STATE_RESULT) {
+        resultTimer--;
+        if (resultTimer <= 0) {
+          state = STATE_AIMING;
+          bannerMsg = "PRESS SPACE TO LOCK AIM";
+          updateHUD();
+        }
+      }
+    }
+
+    function checkLand() {
+      shotsTaken++;
+      let hitIdx = -1;
+      let minDist = 999;
+
+      cups.forEach((cup, idx) => {
+        if (cup.active) {
+          const dist = Math.hypot(cup.x - ball.targetX, cup.y - ball.targetY);
+          if (dist < cup.radius + 2 && dist < minDist) {
+            minDist = dist;
+            hitIdx = idx;
+          }
+        }
+      });
+
+      if (hitIdx !== -1) {
+        cups[hitIdx].active = false;
+        bannerMsg = "SPLASH! CUP SUNK!";
+      } else {
+        bannerMsg = "MISS! TRY AGAIN!";
+      }
+
+      const cupsLeft = cups.filter(c => c.active).length;
+      if (cupsLeft === 0) {
+        state = STATE_GAMEOVER;
+        bannerMsg = "VICTORY! TABLE CLEARED!";
+        subBannerMsg = `COMPLETED IN ${shotsTaken} SHOTS! PRESS SPACE TO RESTART`;
+      } else {
+        state = STATE_RESULT;
+        resultTimer = 70; // ~1.2s delay before next turn
+      }
+      updateHUD();
+    }
+
+    function drawTable() {
+      // Bar floor background
+      ctx.fillStyle = '#120d18';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Floor planks
+      ctx.strokeStyle = '#1e1628';
+      ctx.lineWidth = 2;
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Ping pong table top (Green surface)
+      const tableX = 140;
+      const tableY = 70;
+      const tableW = 520;
+      const tableH = 480;
+
+      // Table shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(tableX + 15, tableY + 15, tableW, tableH);
+
+      // Green table top
+      ctx.fillStyle = '#1b5e20';
+      ctx.fillRect(tableX, tableY, tableW, tableH);
+
+      // White boundary line
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(tableX + 8, tableY + 8, tableW - 16, tableH - 16);
+
+      // Center line
+      ctx.beginPath();
+      ctx.moveTo(tableX + tableW / 2, tableY + 8);
+      ctx.lineTo(tableX + tableW / 2, tableY + tableH - 8);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Net across middle
+      const netY = tableY + tableH * 0.62;
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(tableX - 10, netY);
+      ctx.lineTo(tableX + tableW + 10, netY);
+      ctx.stroke();
+
+      // Net posts
+      ctx.fillStyle = '#ff5fd2';
+      ctx.fillRect(tableX - 12, netY - 8, 5, 16);
+      ctx.fillRect(tableX + tableW + 7, netY - 8, 5, 16);
+    }
+
+    function drawCups() {
+      cups.forEach(cup => {
+        if (!cup.active) return;
+
+        // Cup outer shadow
+        ctx.beginPath();
+        ctx.arc(cup.x + 2, cup.y + 3, cup.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fill();
+
+        // Red Solo Cup base body
+        ctx.beginPath();
+        ctx.arc(cup.x, cup.y, cup.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#d90429';
+        ctx.fill();
+
+        // Inner white rim
+        ctx.beginPath();
+        ctx.arc(cup.x, cup.y, cup.radius - 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Liquid inside
+        ctx.beginPath();
+        ctx.arc(cup.x, cup.y, cup.radius - 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#3d0008';
+        ctx.fill();
+      });
+    }
+
+    function drawControlsHUD() {
+      // Aim trajectory indicator
+      if (state === STATE_AIMING || state === STATE_POWERING) {
+        const aimLength = 160;
+        const endX = 400 + Math.sin(aimAngle) * aimLength;
+        const endY = 530 - Math.cos(aimAngle) * aimLength;
+
+        ctx.strokeStyle = '#4de8ff';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(400, 530);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Target aim dot
+        ctx.beginPath();
+        ctx.arc(endX, endY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#4de8ff';
+        ctx.fill();
+      }
+
+      // Power meter (Right side gauge)
+      const gaugeX = 710;
+      const gaugeY = 220;
+      const gaugeW = 24;
+      const gaugeH = 220;
+
+      ctx.fillStyle = '#181528';
+      ctx.fillRect(gaugeX - 4, gaugeY - 4, gaugeW + 8, gaugeH + 8);
+      ctx.strokeStyle = '#ff5fd2';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gaugeX - 4, gaugeY - 4, gaugeW + 8, gaugeH + 8);
+
+      // Meter fill
+      const fillH = power * gaugeH;
+      ctx.fillStyle = '#ff5fd2';
+      ctx.fillRect(gaugeX, gaugeY + (gaugeH - fillH), gaugeW, fillH);
+
+      // Power label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('PWR', gaugeX + gaugeW / 2, gaugeY - 12);
+    }
+
+    function drawBall() {
+      if (state === STATE_THROWN) {
+        // Shadow on table
+        ctx.beginPath();
+        ctx.ellipse(ball.x, ball.y, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fill();
+
+        // Flying ball
+        const renderY = ball.y - ball.z;
+        ctx.beginPath();
+        ctx.arc(ball.x, renderY, 9, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#dddddd';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (state === STATE_AIMING || state === STATE_POWERING || state === STATE_START) {
+        // Ball waiting at bottom
+        ctx.beginPath();
+        ctx.arc(400, 530, 9, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
+    }
+
+    function drawOverlay() {
+      if (state === STATE_START || state === STATE_GAMEOVER || state === STATE_RESULT) {
+        ctx.fillStyle = 'rgba(18, 16, 31, 0.75)';
+        ctx.fillRect(150, 240, 500, 120);
+        ctx.strokeStyle = '#ff5fd2';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(150, 240, 500, 120);
+
+        ctx.fillStyle = '#ff5fd2';
+        ctx.font = 'bold 20px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(bannerMsg, 400, 285);
+
+        ctx.fillStyle = '#4de8ff';
+        ctx.font = '14px "Courier New", monospace';
+        ctx.fillText(subBannerMsg, 400, 320);
+      }
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawTable();
+      drawCups();
+      drawControlsHUD();
+      drawBall();
+      drawOverlay();
+    }
+
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input Handling
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+
+        if (state === STATE_START) {
+          state = STATE_AIMING;
+          bannerMsg = "";
+          updateHUD();
+        } else if (state === STATE_AIMING) {
+          state = STATE_POWERING;
+          updateHUD();
+        } else if (state === STATE_POWERING) {
+          state = STATE_THROWN;
+          ball.startX = 400;
+          ball.startY = 530;
+          ball.frame = 0;
+
+          // Compute target location based on aim angle and power bar
+          const dist = 120 + power * 340;
+          ball.targetY = ball.startY - dist;
+          ball.targetX = ball.startX + Math.sin(aimAngle) * dist;
+
+          updateHUD();
+        } else if (state === STATE_GAMEOVER) {
+          resetGame();
+        }
+      }
+    });
+
+    initCups();
+    gameLoop();
+  </script>
+</body>
+</html>
