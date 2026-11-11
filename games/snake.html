@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake</title>
+  <style>
+    body { margin: 0; background: #12101f; color: #f2f0ff; font-family: "Courier New", monospace; text-align: center; }
+    h1 { color: #ff5fd2; margin: 16px 0 4px; }
+    #hud { margin-bottom: 8px; }
+    canvas { background: #1e1a33; border: 2px solid #4de8ff; border-radius: 8px; max-width: 95vw; }
+    .back { position: fixed; left: 10px; bottom: 10px; color: #fff; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; text-decoration: none; font: 14px Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Back to the arcade</a>
+  <h1>SNAKE</h1>
+  <div id="hud">Score: <span id="score">0</span> &nbsp; Best: <span id="best">0</span></div>
+  <canvas id="game" width="480" height="480"></canvas>
+  <p>Arrow keys or WASD to steer. Press space to start.</p>
+
+  <script>
+    // ----- Setup -----
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const CELL = 24;
+    const COLS = canvas.width / CELL;
+    const ROWS = canvas.height / CELL;
+    const FOOD = "\u{1F32E}";
+
+    let snake, dir, nextDir, food, score, best, running, over, tick, stepEvery;
+    best = 0;
+
+    function reset() {
+      snake = [{ x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
+      dir = { x: 1, y: 0 };
+      nextDir = dir;
+      score = 0;
+      tick = 0;
+      stepEvery = 8;
+      over = false;
+      placeFood();
+      updateHud();
+    }
+
+    function placeFood() {
+      do {
+        food = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+      } while (snake.some(function (s) { return s.x === food.x && s.y === food.y; }));
+    }
+
+    function updateHud() {
+      document.getElementById("score").textContent = score;
+      document.getElementById("best").textContent = best;
+    }
+
+    function start() { reset(); running = true; }
+
+    // ----- Controls -----
+    const TURNS = {
+      ArrowUp: { x: 0, y: -1 }, w: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 }, s: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 }, a: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 }, d: { x: 1, y: 0 }
+    };
+    document.addEventListener("keydown", function (e) {
+      if (e.key === " ") { e.preventDefault(); if (!running) start(); return; }
+      const turn = TURNS[e.key];
+      if (!turn) return;
+      e.preventDefault();
+      // No turning straight back into yourself.
+      if (turn.x !== -dir.x || turn.y !== -dir.y) nextDir = turn;
+    });
+    canvas.addEventListener("click", function () { if (!running) start(); });
+
+    // ----- Game rules -----
+    function update() {
+      tick++;
+      if (tick < stepEvery) return;
+      tick = 0;
+
+      dir = nextDir;
+      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+      const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
+      const hitSelf = snake.some(function (s) { return s.x === head.x && s.y === head.y; });
+      if (hitWall || hitSelf) {
+        running = false;
+        over = true;
+        best = Math.max(best, score);
+        updateHud();
+        return;
+      }
+
+      snake.unshift(head);
+      if (head.x === food.x && head.y === food.y) {
+        score++;
+        stepEvery = Math.max(3, 8 - Math.floor(score / 4));
+        placeFood();
+        updateHud();
+      } else {
+        snake.pop();
+      }
+    }
+
+    // ----- Drawing -----
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.font = "20px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(FOOD, food.x * CELL + CELL / 2, food.y * CELL + CELL / 2 + 1);
+
+      snake.forEach(function (s, i) {
+        ctx.fillStyle = i === 0 ? "#ff5fd2" : "#4de8ff";
+        ctx.fillRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2);
+      });
+
+      if (!running) {
+        ctx.fillStyle = "rgba(18,16,31,.75)";
+        ctx.fillRect(0, canvas.height / 2 - 50, canvas.width, 90);
+        ctx.fillStyle = "#ff5fd2";
+        ctx.font = "28px Courier New";
+        ctx.fillText(over ? "GAME OVER - " + score : "SNAKE", canvas.width / 2, canvas.height / 2 - 18);
+        ctx.fillStyle = "#f2f0ff";
+        ctx.font = "18px Courier New";
+        ctx.fillText("Press space or click to play", canvas.width / 2, canvas.height / 2 + 16);
+      }
+    }
+
+    function loop() {
+      if (running) update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    reset();
+    running = false;
+    loop();
+  </script>
+</body>
+</html>

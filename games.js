@@ -26,5 +26,11 @@ const GAMES = [
     file: "games/minecraft.html",
     description: "Mine blocks, build structures, and explore your pixel world.",
     controls: "A/D to move, W/Space to jump, Left-click to mine, Right-click to place, 1-6 keys for blocks"
+  },
+  {
+    title: "Snake",
+    file: "games/snake.html",
+    description: "Eat the tacos and grow. Don't hit the walls or your own tail.",
+    controls: "Arrow keys or WASD to steer, space to start"
   }
 ];
