@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saucer Storm</title>
+  <style>
+    body { margin: 0; background: #12101f; color: #f2f0ff; font-family: "Courier New", monospace; text-align: center; }
+    h1 { color: #ff5fd2; margin: 16px 0 4px; }
+    #hud { margin-bottom: 8px; }
+    canvas { background: #1e1a33; border: 2px solid #4de8ff; border-radius: 8px; max-width: 95vw; }
+    .back { position: fixed; left: 10px; bottom: 10px; color: #fff; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 6px; text-decoration: none; font: 14px Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Back to the arcade</a>
+  <h1>SAUCER STORM</h1>
+  <div id="hud">Score: <span id="score">0</span> &nbsp; Lives: <span id="lives">3</span> &nbsp; Wave: <span id="wave">1</span></div>
+  <canvas id="game" width="480" height="600"></canvas>
+  <p>Left and right arrows to move, space to shoot. Press space to start.</p>
+
+  <script>
+    // ----- Setup -----
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const ROWS = 4, COLS = 8, SW = 34, SH = 18, GAP_X = 18, GAP_Y = 22;
+
+    let ship, shots, bombs, saucers, fleetDir, fleetSpeed, score, lives, wave, running, over, cooldown, hitFlash;
+
+    function makeFleet() {
+      saucers = [];
+      const width = COLS * SW + (COLS - 1) * GAP_X;
+      const left = (canvas.width - width) / 2;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          saucers.push({ x: left + c * (SW + GAP_X), y: 60 + r * (SH + GAP_Y), row: r });
+        }
+      }
+      fleetDir = 1;
+      fleetSpeed = 0.5 + wave * 0.25;
+    }
+
+    function reset() {
+      ship = { x: canvas.width / 2 - 20, y: canvas.height - 40, w: 40, h: 16 };
+      shots = [];
+      bombs = [];
+      score = 0;
+      lives = 3;
+      wave = 1;
+      cooldown = 0;
+      hitFlash = 0;
+      over = false;
+      makeFleet();
+      updateHud();
+    }
+
+    function updateHud() {
+      document.getElementById("score").textContent = score;
+      document.getElementById("lives").textContent = lives;
+      document.getElementById("wave").textContent = wave;
+    }
+
+    function start() { reset(); running = true; }
+
+    // ----- Controls -----
+    const keys = {};
+    document.addEventListener("keydown", function (e) {
+      keys[e.key] = true;
+      if (e.key === " ") { e.preventDefault(); if (!running) start(); }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") e.preventDefault();
+    });
+    document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+    canvas.addEventListener("click", function () { if (!running) start(); });
+
+    function hits(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // ----- Game rules -----
+    function update() {
+      // Ship
+      if (keys["ArrowLeft"]) ship.x -= 6;
+      if (keys["ArrowRight"]) ship.x += 6;
+      ship.x = Math.max(0, Math.min(canvas.width - ship.w, ship.x));
+
+      // Shooting: one shot every few frames
+      cooldown--;
+      if (keys[" "] && cooldown <= 0) {
+        shots.push({ x: ship.x + ship.w / 2 - 2, y: ship.y - 10, w: 4, h: 12 });
+        cooldown = 18;
+      }
+      shots.forEach(function (s) { s.y -= 9; });
+      shots = shots.filter(function (s) { return s.y > -20; });
+
+      // Fleet moves side to side, steps down at the edges, speeds up as it shrinks
+      const speed = fleetSpeed + (ROWS * COLS - saucers.length) * 0.04;
+      let edge = false;
+      saucers.forEach(function (a) {
+        a.x += speed * fleetDir;
+        if (a.x < 8 || a.x + SW > canvas.width - 8) edge = true;
+      });
+      if (edge) {
+        fleetDir *= -1;
+        saucers.forEach(function (a) { a.y += 16; a.x += speed * fleetDir; });
+      }
+
+      // Saucers drop bombs now and then
+      if (saucers.length && Math.random() < 0.012 + wave * 0.004) {
+        const a = saucers[Math.floor(Math.random() * saucers.length)];
+        bombs.push({ x: a.x + SW / 2 - 3, y: a.y + SH, w: 6, h: 10 });
+      }
+      bombs.forEach(function (b) { b.y += 3.2 + wave * 0.3; });
+      bombs = bombs.filter(function (b) { return b.y < canvas.height + 20; });
+
+      // Shots hit saucers
+      shots = shots.filter(function (s) {
+        for (let i = 0; i < saucers.length; i++) {
+          const a = saucers[i];
+          if (hits(s, { x: a.x, y: a.y, w: SW, h: SH })) {
+            saucers.splice(i, 1);
+            score += 10 * (ROWS - a.row);
+            updateHud();
+            return false;
+          }
+        }
+        return true;
+      });
+
+      // Bombs hit the ship
+      bombs = bombs.filter(function (b) {
+        if (hits(b, ship)) { lives--; hitFlash = 20; updateHud(); return false; }
+        return true;
+      });
+      if (hitFlash > 0) hitFlash--;
+
+      // Saucers reach the bottom, or no lives left
+      const landed = saucers.some(function (a) { return a.y + SH >= ship.y; });
+      if (lives <= 0 || landed) { running = false; over = true; return; }
+
+      // Wave cleared: next wave, a little faster
+      if (saucers.length === 0) {
+        wave++;
+        bombs = [];
+        shots = [];
+        makeFleet();
+        updateHud();
+      }
+    }
+
+    // ----- Drawing -----
+    function drawSaucer(a) {
+      ctx.fillStyle = a.row === 0 ? "#ff5fd2" : "#4de8ff";
+      ctx.beginPath();
+      ctx.ellipse(a.x + SW / 2, a.y + SH * 0.65, SW / 2, SH * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(a.x + SW / 2, a.y + SH * 0.4, SW / 4, SH * 0.35, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = "#12101f";
+      for (let i = 0; i < 3; i++) ctx.fillRect(a.x + 8 + i * 8, a.y + SH * 0.6, 3, 3);
+    }
+
+    function drawShip() {
+      if (hitFlash > 0 && hitFlash % 4 < 2) return;
+      ctx.fillStyle = "#f2f0ff";
+      ctx.beginPath();
+      ctx.moveTo(ship.x, ship.y + ship.h);
+      ctx.lineTo(ship.x + ship.w / 2, ship.y - 6);
+      ctx.lineTo(ship.x + ship.w, ship.y + ship.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      saucers.forEach(drawSaucer);
+      drawShip();
+      ctx.fillStyle = "#4de8ff";
+      shots.forEach(function (s) { ctx.fillRect(s.x, s.y, s.w, s.h); });
+      ctx.fillStyle = "#ff5fd2";
+      bombs.forEach(function (b) { ctx.fillRect(b.x, b.y, b.w, b.h); });
+
+      if (!running) {
+        ctx.fillStyle = "rgba(18,16,31,.75)";
+        ctx.fillRect(0, canvas.height / 2 - 50, canvas.width, 90);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ff5fd2";
+        ctx.font = "28px Courier New";
+        ctx.fillText(over ? "GAME OVER - " + score : "SAUCER STORM", canvas.width / 2, canvas.height / 2 - 12);
+        ctx.fillStyle = "#f2f0ff";
+        ctx.font = "18px Courier New";
+        ctx.fillText("Press space or click to play", canvas.width / 2, canvas.height / 2 + 20);
+      }
+    }
+
+    function loop() {
+      if (running) update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    reset();
+    running = false;
+    loop();
+  </script>
+</body>
+</html>

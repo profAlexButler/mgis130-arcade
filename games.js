@@ -32,5 +32,11 @@ const GAMES = [
     file: "games/snake.html",
     description: "Eat the tacos and grow. Don't hit the walls or your own tail.",
     controls: "Arrow keys or WASD to steer, space to start"
+  },
+  {
+    title: "Saucer Storm",
+    file: "games/saucer-storm.html",
+    description: "A fleet of saucers is coming down. Shoot them before they land.",
+    controls: "Left and right arrows to move, space to shoot"
   }
 ];
